@@ -32,15 +32,29 @@
   <section id="loginView" class="login-shell">
     <div class="login-card">
       <div class="brand"><div class="brand-mark">M</div><div><h1>Casona Malú</h1><p>Agenda interna</p></div></div>
-      <h2>Iniciar sesión</h2>
-      <p>Ingresa con tu correo y contraseña.</p>
-      <form id="loginForm">
-        <div class="field"><label for="loginEmail">Correo</label><input id="loginEmail" type="email" required autocomplete="username" value="admin@casonamalu.cl"></div>
-        <div class="field"><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" required autocomplete="current-password" value="Admin123!"></div>
-        <button class="btn btn-primary btn-block" type="submit">Ingresar</button>
-        <div id="loginError" class="error"></div>
-      </form>
-      <div class="demo-box"><strong>Acceso de demostración</strong><br>Administrador: admin@casonamalu.cl / Admin123!<br>Vendedora: vendedora1@casonamalu.cl / Venta123!</div>
+      <div id="loginPanel">
+        <h2>Iniciar sesión</h2>
+        <p>Ingresa con tu correo y contraseña.</p>
+        <form id="loginForm">
+          <div class="field"><label for="loginEmail">Correo</label><input id="loginEmail" type="email" required autocomplete="username"></div>
+          <div class="field"><label for="loginPassword">Contraseña</label><input id="loginPassword" type="password" required autocomplete="current-password"></div>
+          <button class="btn btn-primary btn-block" type="submit">Ingresar</button>
+          <div id="loginError" class="error"></div>
+        </form>
+      </div>
+      <div id="firstSetup" class="hidden">
+        <h2>Configuración inicial</h2>
+        <p>Crea la primera cuenta administradora. Estos datos se guardarán solamente en este navegador.</p>
+        <form id="setupForm">
+          <div class="field"><label for="setupName">Nombre</label><input id="setupName" required autocomplete="name"></div>
+          <div class="field"><label for="setupEmail">Correo</label><input id="setupEmail" type="email" required autocomplete="username"></div>
+          <div class="field"><label for="setupPassword">Contraseña</label><input id="setupPassword" type="password" minlength="8" required autocomplete="new-password"></div>
+          <div class="field"><label for="setupPasswordConfirm">Repetir contraseña</label><input id="setupPasswordConfirm" type="password" minlength="8" required autocomplete="new-password"></div>
+          <button class="btn btn-primary btn-block" type="submit">Crear administrador</button>
+          <div id="setupError" class="error"></div>
+        </form>
+      </div>
+      <div class="demo-box"><strong>Importante:</strong> este prototipo no contiene contraseñas predeterminadas. No debe utilizarse como autenticación productiva sin backend seguro.</div>
     </div>
   </section>
 
@@ -85,12 +99,7 @@ function defaultState(){
   const today=ymd(new Date());
   return {
     settings:{businessName:'Casona Malú',address:'Av. Rancagua 187',phone:'+56 9 0000 0000',instagram:'@casonamalu',contactEmail:'casonamalu@gmail.com',timezone:'America/Santiago',sharedCapacity:1,maxDailyTrialDelivery:3,retentionMonths:6,auditMonths:12},
-    users:[
-      {id:'u-admin',name:'Administradora General',email:'admin@casonamalu.cl',role:'admin',password:'Admin123!',active:true,forceChange:false},
-      {id:'u-v1',name:'Vendedora 1',email:'vendedora1@casonamalu.cl',role:'vendedor',password:'Venta123!',active:true,forceChange:false},
-      {id:'u-v2',name:'Vendedora 2',email:'vendedora2@casonamalu.cl',role:'vendedor',password:'Venta123!',active:true,forceChange:false},
-      {id:'u-r1',name:'Recepción',email:'recepcion@casonamalu.cl',role:'recepcion',password:'Recep123!',active:true,forceChange:false}
-    ],
+    users:[],
     appointmentTypes:[
       {id:'venta',name:'Cita de venta',duration:45,color:'#9b5b6e',active:true,slots:['10:00','11:00','12:00','13:00','15:00','16:00','17:00','18:00'],countsDailyLimit:false},
       {id:'prueba1',name:'Prueba 1',duration:15,color:'#c88f6a',active:true,slots:['10:45','11:45','12:45','13:45','15:45','16:45','17:45'],countsDailyLimit:true},
@@ -103,8 +112,8 @@ function defaultState(){
       {id:'c2',firstName:'Carolina',lastName:'Rojas',email:'carolina@example.com',phone:'+56 9 2222 2222',clientTypeId:'madrina',createdAt:nowISO(),updatedAt:nowISO()}
     ],
     appointments:[
-      {id:'a1',clientId:'c1',typeId:'venta',date:today,time:'10:00',status:'agendada',notes:'Busca un vestido de corte clásico.',createdBy:'u-admin',createdAt:nowISO(),updatedAt:nowISO(),overbook:false,outOfBlock:false},
-      {id:'a2',clientId:'c2',typeId:'prueba1',date:today,time:'11:45',status:'agendada',notes:'Traer calzado del evento.',createdBy:'u-v1',createdAt:nowISO(),updatedAt:nowISO(),overbook:false,outOfBlock:false}
+      {id:'a1',clientId:'c1',typeId:'venta',date:today,time:'10:00',status:'agendada',notes:'Busca un vestido de corte clásico.',createdBy:'migration',createdAt:nowISO(),updatedAt:nowISO(),overbook:false,outOfBlock:false},
+      {id:'a2',clientId:'c2',typeId:'prueba1',date:today,time:'11:45',status:'agendada',notes:'Traer calzado del evento.',createdBy:'migration',createdAt:nowISO(),updatedAt:nowISO(),overbook:false,outOfBlock:false}
     ],
     closures:[],
     templates:[
@@ -146,7 +155,7 @@ function renderApp(){
   const [t,s]=titles[ui.route]||titles.agenda;document.getElementById('pageTitle').textContent=t;document.getElementById('pageSubtitle').textContent=s;
   const fn={agenda:renderAgenda,dashboard:renderDashboard,clients:renderClients,reports:renderReports,mail:renderMail,maintainers:renderMaintainers,users:renderUsers,audit:renderAudit,settings:renderSettings,data:renderData}[ui.route];document.getElementById('page').innerHTML=fn();bindPageEvents();
 }
-function showLogin(){document.getElementById('loginView').classList.remove('hidden');document.getElementById('appView').classList.add('hidden')}
+function showLogin(){document.getElementById('loginView').classList.remove('hidden');document.getElementById('appView').classList.add('hidden');const first=state.users.length===0;document.getElementById('firstSetup').classList.toggle('hidden',!first);document.getElementById('loginPanel').classList.toggle('hidden',first)}
 function showApp(){document.getElementById('loginView').classList.add('hidden');document.getElementById('appView').classList.remove('hidden')}
 
 function apptType(id){return state.appointmentTypes.find(x=>x.id===id)}
@@ -251,22 +260,22 @@ function addClientType(){const name=prompt('Nombre del nuevo tipo de cliente:');
 function openClosureModal(){modal('Nuevo feriado o cierre',`<form id="closureForm" class="form-grid"><div class="field"><label>Fecha</label><input name="date" type="date" required></div><div class="field"><label>Nombre</label><input name="name" required placeholder="Feriado legal, cierre especial..."></div></form>`,`<button class="btn btn-secondary" data-close>Cerrar</button><button class="btn btn-primary" data-save-closure>Guardar</button>`);document.querySelector('[data-save-closure]').onclick=()=>{const f=document.getElementById('closureForm');if(!f.reportValidity())return;const d=Object.fromEntries(new FormData(f).entries());state.closures.push({id:uid(),...d});audit('Crear','cierre','-',`${d.date} ${d.name}`);saveState();closeModal();renderApp()}}
 function openTemplateModal(id){const t=state.templates.find(x=>x.id===id);modal('Editar plantilla',`<form id="templateForm"><div class="field"><label>Asunto</label><input name="subject" value="${esc(t.subject)}"></div><div class="field"><label>Cuerpo</label><textarea name="body" rows="14">${esc(t.body)}</textarea></div><p class="hint">Variables: {{nombre}}, {{tipo}}, {{fecha}}, {{hora}}, {{direccion}}, {{telefono}}, {{correo}}, {{instagram}}, {{indicaciones_prueba}}</p></form>`,`<button class="btn btn-secondary" data-close>Cerrar</button><button class="btn btn-primary" data-save-template>Guardar</button>`);document.querySelector('[data-save-template]').onclick=()=>{const d=Object.fromEntries(new FormData(document.getElementById('templateForm')).entries());Object.assign(t,d);audit('Modificar','plantilla',id,t.name);saveState();closeModal();renderApp()}}
 function openReportModal(){modal('Programar reporte',`<form id="reportForm" class="form-grid"><div class="field"><label>Días</label><input name="days" placeholder="Lunes a sábado"></div><div class="field"><label>Hora</label><input name="time" type="time" value="08:00"></div><div class="field full"><label>Correo destinatario</label><input name="email" type="email" required></div><div class="field full"><label>Datos a mostrar</label><input name="fields" value="Fecha, hora, tipo, cliente, contacto, observación"></div></form>`,`<button class="btn btn-secondary" data-close>Cerrar</button><button class="btn btn-primary" data-save-report>Guardar</button>`);document.querySelector('[data-save-report]').onclick=()=>{const f=document.getElementById('reportForm');if(!f.reportValidity())return;state.reportSchedules.push({id:uid(),...Object.fromEntries(new FormData(f).entries())});audit('Crear','reporte programado','-','');saveState();closeModal();renderApp()}}
-function openUserModal(){modal('Nuevo usuario',`<form id="userForm" class="form-grid"><div class="field"><label>Nombre</label><input name="name" required></div><div class="field"><label>Correo</label><input name="email" type="email" required></div><div class="field"><label>Rol</label><select name="role"><option value="admin">Administrador</option><option value="vendedor">Vendedora</option><option value="recepcion">Recepción</option></select></div><div class="field"><label>Contraseña temporal</label><input name="password" value="Temporal123!" required></div></form>`,`<button class="btn btn-secondary" data-close>Cerrar</button><button class="btn btn-primary" data-save-user>Guardar</button>`);document.querySelector('[data-save-user]').onclick=()=>{const f=document.getElementById('userForm');if(!f.reportValidity())return;const d=Object.fromEntries(new FormData(f).entries());state.users.push({id:uid(),...d,active:true,forceChange:true});audit('Crear','usuario','-',d.email);saveState();closeModal();renderApp()}}
+function openUserModal(){modal('Nuevo usuario',`<form id="userForm" class="form-grid"><div class="field"><label>Nombre</label><input name="name" required></div><div class="field"><label>Correo</label><input name="email" type="email" required></div><div class="field"><label>Rol</label><select name="role"><option value="admin">Administrador</option><option value="vendedor">Vendedora</option><option value="recepcion">Recepción</option></select></div><div class="field"><label>Contraseña temporal</label><input name="password" type="password" minlength="8" required></div></form>`,`<button class="btn btn-secondary" data-close>Cerrar</button><button class="btn btn-primary" data-save-user>Guardar</button>`);document.querySelector('[data-save-user]').onclick=()=>{const f=document.getElementById('userForm');if(!f.reportValidity())return;const d=Object.fromEntries(new FormData(f).entries());state.users.push({id:uid(),...d,active:true,forceChange:true});audit('Crear','usuario','-',d.email);saveState();closeModal();renderApp()}}
 function toggleUser(id){const u=state.users.find(x=>x.id===id);if(id===currentUser().id)return alert('No puedes dar de baja tu propia cuenta.');u.active=!u.active;audit(u.active?'Dar de alta':'Dar de baja','usuario',id,u.email);saveState();renderApp()}
-function resetUserPassword(id){const u=state.users.find(x=>x.id===id),p=prompt('Nueva contraseña temporal:','Temporal123!');if(!p)return;u.password=p;u.forceChange=true;audit('Cambiar clave','usuario',id,u.email);saveState();alert('Contraseña temporal actualizada.')}
+function resetUserPassword(id){const u=state.users.find(x=>x.id===id),p=prompt('Nueva contraseña temporal (mínimo 8 caracteres):');if(!p)return;u.password=p;u.forceChange=true;audit('Cambiar clave','usuario',id,u.email);saveState();alert('Contraseña temporal actualizada.')}
 function saveSettings(e){e.preventDefault();const d=Object.fromEntries(new FormData(e.target).entries());Object.assign(state.settings,d,{sharedCapacity:Number(d.sharedCapacity),maxDailyTrialDelivery:Number(d.maxDailyTrialDelivery),retentionMonths:Number(d.retentionMonths)});audit('Modificar','configuración','general','');saveState();renderApp()}
 function exportJson(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`respaldo-casona-malu-${ymd(new Date())}.json`;a.click();URL.revokeObjectURL(a.href)}
 function importJson(){const f=document.getElementById('importJson').files[0];if(!f)return alert('Selecciona un archivo.');const r=new FileReader();r.onload=()=>{try{state=JSON.parse(r.result);saveState();audit('Importar','respaldo','-','JSON');renderApp()}catch(e){alert('Archivo inválido.')}};r.readAsText(f)}
 function parseCSV(text){const lines=text.trim().split(/\r?\n/),headers=lines.shift().split(',').map(x=>x.trim());return lines.map(line=>{const vals=line.split(',').map(x=>x.trim());return Object.fromEntries(headers.map((h,i)=>[h,vals[i]||'']))})}
 function importCsv(){const f=document.getElementById('importCsv').files[0];if(!f)return alert('Selecciona un CSV.');const r=new FileReader();r.onload=()=>{try{let count=0;parseCSV(r.result).forEach(row=>{if(row.fecha<ymd(new Date()))return;let c=state.clients.find(x=>x.email.toLowerCase()===row.correo.toLowerCase()||x.phone.replace(/\D/g,'')===row.telefono.replace(/\D/g,''));let ct=state.clientTypes.find(x=>x.name.toLowerCase()===row.tipo_cliente.toLowerCase());let at=state.appointmentTypes.find(x=>x.name.toLowerCase().includes(row.tipo_cita.toLowerCase())||x.id===row.tipo_cita);if(!ct){ct={id:uid(),name:row.tipo_cliente,active:true};state.clientTypes.push(ct)}if(!at)return;if(!c){c={id:uid(),firstName:row.nombre,lastName:row.apellido,email:row.correo,phone:row.telefono,clientTypeId:ct.id,createdAt:nowISO(),updatedAt:nowISO()};state.clients.push(c)}state.appointments.push({id:uid(),clientId:c.id,typeId:at.id,date:row.fecha,time:row.hora,status:'agendada',notes:'Migrado desde planilla',createdBy:'migration',createdAt:nowISO(),updatedAt:nowISO(),overbook:false,outOfBlock:!at.slots.includes(row.hora)});count++});audit('Importar','migración','-',`${count} citas`);saveState();alert(`${count} citas importadas.`);renderApp()}catch(e){alert('No fue posible importar el CSV: '+e.message)}};r.readAsText(f)}
-function resetDemo(){if(!confirm('¿Restablecer todos los datos del prototipo?'))return;state=defaultState();saveState();session.userId='u-admin';localStorage.setItem(SESSION_KEY,'u-admin');renderApp()}
+function resetDemo(){if(!confirm('¿Restablecer todos los datos del prototipo?'))return;state=defaultState();saveState();session.userId=null;localStorage.removeItem(SESSION_KEY);showLogin()}
 
 function changePasswordModal(user){modal('Cambio obligatorio de contraseña',`<form id="changePassForm"><div class="field"><label>Nueva contraseña</label><input name="password" type="password" minlength="8" required><p class="hint">Mínimo 8 caracteres.</p></div></form>`,`<button class="btn btn-primary" data-change-pass>Guardar contraseña</button>`);document.querySelector('[data-change-pass]').onclick=()=>{const f=document.getElementById('changePassForm');if(!f.reportValidity())return;user.password=new FormData(f).get('password');user.forceChange=false;audit('Cambio inicial de clave','usuario',user.id,'');saveState();closeModal();renderApp()}}
 
+document.getElementById('setupForm').addEventListener('submit',e=>{e.preventDefault();const name=document.getElementById('setupName').value.trim(),email=document.getElementById('setupEmail').value.trim().toLowerCase(),password=document.getElementById('setupPassword').value,confirmPassword=document.getElementById('setupPasswordConfirm').value,error=document.getElementById('setupError');error.textContent='';if(password!==confirmPassword){error.textContent='Las contraseñas no coinciden.';return}if(password.length<8){error.textContent='La contraseña debe tener al menos 8 caracteres.';return}const user={id:uid(),name,email,role:'admin',password,active:true,forceChange:false};state.users.push(user);saveState();session.userId=user.id;localStorage.setItem(SESSION_KEY,user.id);audit('Crear','usuario',user.id,'Administrador inicial');renderApp()});
 document.getElementById('loginForm').addEventListener('submit',e=>{e.preventDefault();const email=document.getElementById('loginEmail').value.trim().toLowerCase(),password=document.getElementById('loginPassword').value;const u=state.users.find(x=>x.active&&x.email.toLowerCase()===email&&x.password===password);if(!u){document.getElementById('loginError').textContent='Correo o contraseña incorrectos.';return}session.userId=u.id;localStorage.setItem(SESSION_KEY,u.id);audit('Iniciar sesión','usuario',u.id,'');renderApp();if(u.forceChange)changePasswordModal(u)});
 document.getElementById('logoutBtn').onclick=()=>{localStorage.removeItem(SESSION_KEY);session.userId=null;showLogin()};document.getElementById('mobileMenu').onclick=()=>document.getElementById('sidebar').classList.toggle('open');
 autoMaintenance();currentUser()?renderApp():showLogin();
 </script>
 </body>
 </html>
-

@@ -1,0 +1,7 @@
+project_id = "casona-malu-agenda"
+
+[functions.admin-user]
+verify_jwt = true
+
+[functions.send-email-queue]
+verify_jwt = false

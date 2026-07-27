@@ -5,6 +5,8 @@ select cron.schedule(
   'casona-malu-email-queue',
   '*/5 * * * *',
   $$
+  select public.queue_due_scheduled_reports();
+
   select net.http_post(
     url := 'https://TU-PROYECTO.supabase.co/functions/v1/send-email-queue',
     headers := jsonb_build_object(

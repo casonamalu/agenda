@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { roleLabel } from '../lib/date'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 
-export type PageKey = 'agenda' | 'dashboard' | 'clients' | 'settings' | 'users' | 'audit' | 'emails'
+export type PageKey = 'agenda' | 'dashboard' | 'clients' | 'reports' | 'settings' | 'users' | 'audit' | 'emails'
 
 interface LayoutProps {
   children: ReactNode
@@ -17,13 +17,24 @@ const navItems: Array<{ key: PageKey; label: string; icon: string; adminOnly?: b
   { key: 'agenda', label: 'Agenda', icon: '▦' },
   { key: 'dashboard', label: 'Indicadores', icon: '◫' },
   { key: 'clients', label: 'Clientes', icon: '♙' },
-  { key: 'settings', label: 'Mantenedores', icon: '⚙', adminOnly: true },
-  { key: 'users', label: 'Usuarios', icon: '◎', adminOnly: true },
-  { key: 'emails', label: 'Correos', icon: '✉', adminOnly: true },
-  { key: 'audit', label: 'Auditoría', icon: '≡', adminOnly: true },
+  { key: 'reports', label: 'Reportes', icon: '▤', adminOnly: true },
+]
+
+const configurationItems: Array<{ key: PageKey; label: string; icon: string }> = [
+  { key: 'settings', label: 'Mantenedores', icon: '⚙' },
+  { key: 'users', label: 'Usuarios', icon: '◎' },
+  { key: 'emails', label: 'Correos', icon: '✉' },
+  { key: 'audit', label: 'Auditoría', icon: '≡' },
 ]
 
 export function Layout({ children, profile, page, setPage, onNewAppointment }: LayoutProps) {
+  const configurationActive = configurationItems.some((item) => item.key === page)
+  const [configurationOpen, setConfigurationOpen] = useState(configurationActive)
+
+  useEffect(() => {
+    if (configurationActive) setConfigurationOpen(true)
+  }, [configurationActive])
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -48,6 +59,35 @@ export function Layout({ children, profile, page, setPage, onNewAppointment }: L
                 {item.label}
               </button>
             ))}
+          {profile.role === 'admin' && (
+            <div className={`nav-group ${configurationActive ? 'active' : ''}`}>
+              <button
+                type="button"
+                className={`nav-group-toggle ${configurationActive ? 'active' : ''}`}
+                aria-expanded={configurationOpen}
+                onClick={() => setConfigurationOpen((open) => !open)}
+              >
+                <span aria-hidden="true">⚙</span>
+                Configuración
+                <span className="nav-chevron" aria-hidden="true">{configurationOpen ? '⌃' : '⌄'}</span>
+              </button>
+              {configurationOpen && (
+                <div className="nav-submenu">
+                  {configurationItems.map((item) => (
+                    <button
+                      type="button"
+                      key={item.key}
+                      className={page === item.key ? 'active' : ''}
+                      onClick={() => setPage(item.key)}
+                    >
+                      <span aria-hidden="true">{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
         <div className="sidebar-user">
           <strong>{profile.full_name}</strong>

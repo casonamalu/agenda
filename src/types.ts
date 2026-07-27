@@ -101,6 +101,7 @@ export interface AuditLog {
 
 export interface EmailQueueItem {
   id: string
+  idempotency_key: string
   appointment_id: string | null
   recipient: string
   kind: string
@@ -110,6 +111,23 @@ export interface EmailQueueItem {
   last_error: string | null
   sent_at: string | null
   created_at: string
+}
+
+export interface ScheduledReport {
+  id: string
+  name: string
+  active: boolean
+  weekdays: number[]
+  send_time: string
+  recipients: string[]
+  period_type: 'today' | 'tomorrow' | 'week'
+  appointment_type_ids: string[] | null
+  statuses: AppointmentStatus[] | null
+  selected_fields: string[]
+  send_empty: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface DashboardStats {

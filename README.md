@@ -2,6 +2,12 @@
 
 Aplicación web interna para administrar citas de **Venta, Prueba 1, Prueba 2 y Entrega**. El frontend utiliza React + TypeScript + Vite y los datos se almacenan centralmente en Supabase/PostgreSQL.
 
+Para actualizar la instalación que ya está publicada, sigue primero:
+
+```text
+docs/ACTUALIZAR_SISTEMA_EXISTENTE.md
+```
+
 ## Funciones incluidas
 
 - Acceso individual mediante correo y contraseña.
@@ -11,12 +17,16 @@ Aplicación web interna para administrar citas de **Venta, Prueba 1, Prueba 2 y 
 - Clientes compartidos y detección de coincidencias.
 - Bloques horarios configurables de lunes a sábado.
 - Duración, colores y capacidades configurables.
-- Control del espacio compartido y máximo diario de pruebas/entregas.
+- Capacidad diaria configurable: Prueba 1 y Prueba 2 comparten un máximo; Entrega tiene un máximo independiente.
+- Ventas disponibles en todos sus bloques diarios, sin consumir la capacidad de pruebas y entregas.
 - Feriados y cierres administrables.
 - Reprogramación, cancelación, inasistencia, sobrecupo y reserva fuera de bloque.
 - Observaciones internas por cita.
-- Cola de correos, recordatorios 24 horas antes y reintentos.
-- Indicadores, clientes, usuarios, mantenedores y auditoría.
+- Cola de correos, recordatorios configurables, reintentos y alertas administrativas.
+- Indicadores mensuales de carga diaria, carga semanal y capacidad por tipo.
+- Reportes de agenda programables por día, hora, período, destinatarios y tipos de cita.
+- Menú de Configuración agrupado para mantenedores, usuarios, correos y auditoría.
+- Prevención de bloqueos de calendario duplicados y confirmación visible al guardar.
 - Retención automática: citas 6 meses y auditoría 12 meses.
 
 ## Estructura
@@ -47,6 +57,14 @@ supabase/migrations/202607240001_init.sql
 ```
 
 El script crea tablas, RLS, funciones, bloques horarios, tipos de cita, tipos de cliente y plantillas de correo.
+
+Si la base inicial ya existe, ejecuta también las migraciones posteriores en orden:
+
+```text
+supabase/migrations/202607260001_notifications.sql
+supabase/migrations/202607260002_daily_capacity_rules.sql
+supabase/migrations/202607270001_system_improvements.sql
+```
 
 ## 2. Crear el primer Administrador
 
@@ -94,17 +112,39 @@ Abre `http://localhost:5173`.
 
 ## 4. Configurar valores de Casona Malú
 
-En SQL Editor actualiza los parámetros pendientes:
+Ingresa como Administrador. En **Mantenedores → Capacidad diaria** se configuran sin modificar código:
 
-```sql
-update public.app_settings set setting_value = to_jsonb('+56 9 XXXX XXXX'::text) where setting_key = 'contact_phone';
-update public.app_settings set setting_value = to_jsonb('contacto@casonamalu.cl'::text) where setting_key = 'contact_email';
-update public.app_settings set setting_value = to_jsonb('@casonamalu'::text) where setting_key = 'instagram';
-```
+- Máximo diario conjunto de Prueba 1 y Prueba 2.
+- Máximo diario de Entregas.
+- Capacidad simultánea del espacio compartido por pruebas y entregas.
 
-La dirección inicial se dejó como `Av. Rancagua 187`.
+Las Ventas no tienen un máximo diario adicional y utilizan todos sus bloques activos.
+Los máximos diarios de pruebas y entregas son obligatorios y no admiten sobrecupo.
 
-## 5. Desplegar funciones Supabase
+En **Mantenedores → Notificaciones** se configuran:
+
+- Nombre comercial, dirección, teléfono, correo de contacto e Instagram.
+- Horas de anticipación del recordatorio.
+- Minutos entre reintentos.
+- Tamaño máximo del lote de envío.
+- Tiempo de recuperación de procesos interrumpidos.
+- Alertas al administrador.
+
+Las plantillas y sus textos se editan en **Mantenedores → Correos**.
+
+## 5. Configurar reportes programados
+
+Ingresa como Administrador y abre **Reportes**. Cada programación permite definir:
+
+- Días de la semana y hora de envío.
+- Agenda del mismo día, día siguiente o próximos siete días.
+- Uno o más destinatarios.
+- Todos los tipos de cita o una selección.
+- Estados incluidos y envío opcional cuando no existan citas.
+
+El proceso automático revisa las programaciones junto con la cola de correos.
+
+## 6. Desplegar funciones Supabase
 
 Instala e inicia sesión en Supabase CLI. Vincula el proyecto y despliega:
 
@@ -118,11 +158,13 @@ Configura secretos únicamente en Supabase, nunca en Git:
 
 ```bash
 supabase secrets set RESEND_API_KEY=re_xxxxxxxxx
-supabase secrets set EMAIL_FROM="Casona Malú <agenda@tudominio.cl>"
+supabase secrets set EMAIL_FROM="Agenda Casona Malú <agenda@notificaciones.casonamalu.cl>"
 supabase secrets set CRON_SECRET=GENERA-UN-VALOR-ALEATORIO-LARGO
 ```
 
-## 6. Programar correos y limpieza
+Antes de crear la clave de Resend, el dominio `notificaciones.casonamalu.cl` debe aparecer como **Verified**. El correo de contacto configurado en el sistema se utiliza como dirección de respuesta, mientras que `EMAIL_FROM` permanece como secreto de infraestructura.
+
+## 7. Programar correos, reportes y limpieza
 
 Activa las extensiones `pg_cron` y `pg_net` desde Supabase. Luego ejecuta y adapta:
 
@@ -131,9 +173,19 @@ docs/CONFIGURAR_CRON.sql
 ```
 
 - La cola de correos se procesa cada cinco minutos.
+- Los reportes que cumplen su día y hora se incorporan automáticamente a la cola.
 - La limpieza se ejecuta mensualmente.
+- Cada envío utiliza una clave de idempotencia para disminuir el riesgo de duplicados.
+- Los elementos que quedan atascados en `processing` se recuperan automáticamente.
+- Desde **Correos** el Administrador puede reintentar un fallo o cancelar un envío pendiente.
 
-## 7. Publicar en Vercel
+La guía completa está en:
+
+```text
+docs/CONFIGURAR_NOTIFICACIONES.md
+```
+
+## 8. Publicar en Vercel
 
 1. Sube la carpeta a un repositorio GitHub.
 2. Importa el repositorio en Vercel.

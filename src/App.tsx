@@ -8,6 +8,7 @@ import { Dashboard } from './components/Dashboard'
 import { EmailQueue } from './components/EmailQueue'
 import { Layout, type PageKey } from './components/Layout'
 import { Login } from './components/Login'
+import { Reports } from './components/Reports'
 import { Settings } from './components/Settings'
 import { Toast } from './components/Toast'
 import { Users } from './components/Users'
@@ -94,6 +95,7 @@ export default function App() {
         {page === 'agenda' && <Agenda refreshToken={refreshToken} onOpenAppointment={openAppointment} onDateForNewAppointment={openNewAppointment} />}
         {page === 'dashboard' && <Dashboard refreshToken={refreshToken} />}
         {page === 'clients' && <Clients profile={profile} refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'reports' && profile.role === 'admin' && <Reports profile={profile} refreshToken={refreshToken} onChanged={notify} />}
         {page === 'settings' && profile.role === 'admin' && <Settings refreshToken={refreshToken} onChanged={notify} />}
         {page === 'users' && profile.role === 'admin' && <Users refreshToken={refreshToken} onChanged={notify} />}
         {page === 'emails' && profile.role === 'admin' && <EmailQueue refreshToken={refreshToken} />}

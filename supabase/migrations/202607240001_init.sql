@@ -409,7 +409,8 @@ declare
   v_category public.appointment_category;
   v_type_capacity integer;
   v_shared_capacity integer := public.setting_int('shared_space_capacity', 1);
-  v_daily_limit integer := public.setting_int('daily_trial_delivery_limit', 3);
+  v_daily_trial_limit integer := public.setting_int('daily_trial_limit', 2);
+  v_daily_delivery_limit integer := public.setting_int('daily_delivery_limit', 2);
   v_overlap_count integer;
   v_type_overlap_count integer;
   v_daily_count integer;
@@ -425,14 +426,18 @@ begin
   v_end_time := p_start_time + make_interval(mins => v_duration);
   if public.is_closed_at(p_date, p_start_time, v_end_time) then return 'Feriado o cierre'; end if;
 
-  select count(*) into v_overlap_count
-  from public.appointments a
-  where a.appointment_date = p_date
-    and a.status <> 'cancelled'
-    and (p_exclude_appointment_id is null or a.id <> p_exclude_appointment_id)
-    and a.start_time < v_end_time
-    and a.end_time > p_start_time;
-  if v_overlap_count >= v_shared_capacity then return 'Espacio compartido ocupado'; end if;
+  if v_category in ('trial', 'delivery') then
+    select count(*) into v_overlap_count
+    from public.appointments a
+    join public.appointment_types overlap_type on overlap_type.id = a.appointment_type_id
+    where a.appointment_date = p_date
+      and a.status <> 'cancelled'
+      and overlap_type.category in ('trial', 'delivery')
+      and (p_exclude_appointment_id is null or a.id <> p_exclude_appointment_id)
+      and a.start_time < v_end_time
+      and a.end_time > p_start_time;
+    if v_overlap_count >= v_shared_capacity then return 'Espacio de pruebas y entregas ocupado'; end if;
+  end if;
 
   select count(*) into v_type_overlap_count
   from public.appointments a
@@ -444,15 +449,24 @@ begin
     and a.end_time > p_start_time;
   if v_type_overlap_count >= v_type_capacity then return 'Capacidad del tipo de cita completa'; end if;
 
-  if v_category in ('trial', 'delivery') then
+  if v_category = 'trial' then
     select count(*) into v_daily_count
     from public.appointments a
     join public.appointment_types t on t.id = a.appointment_type_id
     where a.appointment_date = p_date
       and a.status <> 'cancelled'
-      and t.category in ('trial', 'delivery')
+      and t.category = 'trial'
       and (p_exclude_appointment_id is null or a.id <> p_exclude_appointment_id);
-    if v_daily_count >= v_daily_limit then return 'Límite diario de pruebas y entregas'; end if;
+    if v_daily_count >= v_daily_trial_limit then return 'Límite diario de pruebas alcanzado'; end if;
+  elsif v_category = 'delivery' then
+    select count(*) into v_daily_count
+    from public.appointments a
+    join public.appointment_types t on t.id = a.appointment_type_id
+    where a.appointment_date = p_date
+      and a.status <> 'cancelled'
+      and t.category = 'delivery'
+      and (p_exclude_appointment_id is null or a.id <> p_exclude_appointment_id);
+    if v_daily_count >= v_daily_delivery_limit then return 'Límite diario de entregas alcanzado'; end if;
   end if;
 
   return null;
@@ -527,7 +541,12 @@ begin
 
   v_reason := public.slot_availability_reason(p_appointment_type_id, p_date, p_start_time, p_exclude_appointment_id);
   if v_reason is not null then
-    if v_reason = 'Feriado o cierre' or v_reason = 'Día no laborable' then
+    if v_reason in (
+      'Feriado o cierre',
+      'Día no laborable',
+      'Límite diario de pruebas alcanzado',
+      'Límite diario de entregas alcanzado'
+    ) then
       raise exception '%', v_reason;
     end if;
     if not (v_is_admin and p_allow_overbook) then
@@ -876,8 +895,9 @@ insert into public.app_settings(setting_key, setting_value, description) values
   ('contact_email', '"CONFIGURAR"'::jsonb, 'Correo de contacto'),
   ('instagram', '"CONFIGURAR"'::jsonb, 'Cuenta de Instagram'),
   ('timezone', '"America/Santiago"'::jsonb, 'Zona horaria'),
-  ('shared_space_capacity', '1'::jsonb, 'Capacidad simultánea del espacio compartido'),
-  ('daily_trial_delivery_limit', '3'::jsonb, 'Máximo conjunto diario de pruebas y entregas'),
+  ('shared_space_capacity', '1'::jsonb, 'Capacidad simultánea del espacio de pruebas y entregas'),
+  ('daily_trial_limit', '2'::jsonb, 'Máximo diario conjunto de Prueba 1 y Prueba 2'),
+  ('daily_delivery_limit', '2'::jsonb, 'Máximo diario de entregas'),
   ('appointment_retention_months', '6'::jsonb, 'Retención de citas'),
   ('audit_retention_months', '12'::jsonb, 'Retención de auditoría');
 

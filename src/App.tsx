@@ -16,11 +16,20 @@ import { toIsoDate } from './lib/date'
 import { supabase } from './lib/supabase'
 import type { Appointment, Profile } from './types'
 
+const PAGE_STORAGE_KEY = 'casona-malu-active-page'
+const VALID_PAGES: PageKey[] = ['agenda', 'dashboard', 'clients', 'reports', 'settings', 'users', 'emails', 'audit']
+const ADMIN_PAGES: PageKey[] = ['reports', 'settings', 'users', 'emails', 'audit']
+
+function initialPage(): PageKey {
+  const stored = window.localStorage.getItem(PAGE_STORAGE_KEY) as PageKey | null
+  return stored && VALID_PAGES.includes(stored) ? stored : 'agenda'
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState<PageKey>('agenda')
+  const [page, setPage] = useState<PageKey>(initialPage)
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
   const [newAppointmentDate, setNewAppointmentDate] = useState(toIsoDate(new Date()))
@@ -41,6 +50,14 @@ export default function App() {
     })
     return () => listener.subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(PAGE_STORAGE_KEY, page)
+  }, [page])
+
+  useEffect(() => {
+    if (profile && profile.role !== 'admin' && ADMIN_PAGES.includes(page)) setPage('agenda')
+  }, [page, profile])
 
   async function loadProfile(userId: string) {
     setLoading(true)

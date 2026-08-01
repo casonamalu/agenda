@@ -2,6 +2,7 @@ export type AppRole = 'admin' | 'seller' | 'reception'
 export type AppointmentStatus = 'scheduled' | 'rescheduled' | 'cancelled' | 'no_show'
 export type AppointmentCategory = 'sale' | 'trial' | 'delivery'
 export type CalendarView = 'day' | 'week' | 'month'
+export type CommercialOutcome = 'completed_sale' | 'rejected_sale' | 'potential_sale'
 
 export interface Profile {
   id: string
@@ -25,7 +26,12 @@ export interface Client {
   last_name: string
   email: string
   phone: string
+  instagram: string | null
   client_type_id: string
+  active: boolean
+  marketing_consent: boolean
+  marketing_consent_at: string | null
+  marketing_consent_source: string | null
   client_type?: ClientType | null
   created_at: string
   updated_at: string
@@ -78,6 +84,9 @@ export interface Appointment {
   is_out_of_slot: boolean
   exception_reason: string | null
   cancellation_reason: string | null
+  commercial_outcome: CommercialOutcome | null
+  commercial_outcome_at: string | null
+  commercial_outcome_by: string | null
   created_by: string
   updated_by: string
   created_at: string

@@ -8,6 +8,12 @@ Para actualizar la instalación que ya está publicada, sigue primero:
 docs/ACTUALIZAR_SISTEMA_EXISTENTE.md
 ```
 
+El detalle funcional de esta entrega se encuentra en:
+
+```text
+docs/BACKLOG_IMPLEMENTADO_20260730.md
+```
+
 ## Funciones incluidas
 
 - Acceso individual mediante correo y contraseña.
@@ -22,6 +28,12 @@ docs/ACTUALIZAR_SISTEMA_EXISTENTE.md
 - Feriados y cierres administrables.
 - Reprogramación, cancelación, inasistencia, sobrecupo y reserva fuera de bloque.
 - Observaciones internas por cita.
+- Citas extendidas en intervalos configurables, con validación de todo el tramo.
+- Búsqueda global independiente de la vista diaria, semanal o mensual.
+- Conservación del módulo, vista y fecha al recargar o renovar la sesión.
+- Instagram y autorización de campañas en la ficha de cliente.
+- Exportación administrativa de clientes a Excel y CSV con registro de auditoría.
+- Resultado de cada cita de Venta e indicador mensual de efectividad comercial.
 - Cola de correos, recordatorios configurables, reintentos y alertas administrativas.
 - Indicadores mensuales de carga diaria, carga semanal y capacidad por tipo.
 - Reportes de agenda programables por día, hora, período, destinatarios y tipos de cita.
@@ -64,6 +76,7 @@ Si la base inicial ya existe, ejecuta también las migraciones posteriores en or
 supabase/migrations/202607260001_notifications.sql
 supabase/migrations/202607260002_daily_capacity_rules.sql
 supabase/migrations/202607270001_system_improvements.sql
+supabase/migrations/202607300001_backlog_improvements.sql
 ```
 
 ## 2. Crear el primer Administrador
@@ -117,6 +130,8 @@ Ingresa como Administrador. En **Mantenedores → Capacidad diaria** se configur
 - Máximo diario conjunto de Prueba 1 y Prueba 2.
 - Máximo diario de Entregas.
 - Capacidad simultánea del espacio compartido por pruebas y entregas.
+- Incremento y duración máxima de las citas extendidas.
+- Inicio y término de jornada y horario de almuerzo.
 
 Las Ventas no tienen un máximo diario adicional y utilizan todos sus bloques activos.
 Los máximos diarios de pruebas y entregas son obligatorios y no admiten sobrecupo.
@@ -172,7 +187,7 @@ Activa las extensiones `pg_cron` y `pg_net` desde Supabase. Luego ejecuta y adap
 docs/CONFIGURAR_CRON.sql
 ```
 
-- La cola de correos se procesa cada cinco minutos.
+- La cola de correos se procesa cada minuto.
 - Los reportes que cumplen su día y hora se incorporan automáticamente a la cola.
 - La limpieza se ejecuta mensualmente.
 - Cada envío utiliza una clave de idempotencia para disminuir el riesgo de duplicados.

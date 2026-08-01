@@ -18,6 +18,17 @@ interface DayLoad {
   minutes: number
 }
 
+const TYPE_ORDER: Record<string, number> = {
+  venta: 0,
+  'prueba 1': 1,
+  'prueba 2': 2,
+  entrega: 3,
+}
+
+function typeOrder(name: string) {
+  return TYPE_ORDER[name.trim().toLocaleLowerCase('es-CL')] ?? 99
+}
+
 export function Dashboard({ refreshToken }: { refreshToken: number }) {
   const [cursor, setCursor] = useState(new Date())
   const [appointments, setAppointments] = useState<Appointment[]>([])
@@ -101,6 +112,12 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
       byTypeMap.set(name, item)
     })
 
+    const sales = active.filter((appointment) => appointment.appointment_type?.category === 'sale')
+    const completedSales = sales.filter((appointment) => appointment.commercial_outcome === 'completed_sale').length
+    const rejectedSales = sales.filter((appointment) => appointment.commercial_outcome === 'rejected_sale').length
+    const potentialSales = sales.filter((appointment) => appointment.commercial_outcome === 'potential_sale').length
+    const evaluatedSales = completedSales + rejectedSales
+
     return {
       active,
       totalMinutes,
@@ -108,9 +125,17 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
       daysWithLoad,
       daily,
       weekly: [...weeklyMap.values()],
-      byType: [...byTypeMap.values()].sort((a, b) => b.count - a.count),
+      byType: [...byTypeMap.values()].sort((a, b) => typeOrder(a.name) - typeOrder(b.name) || a.name.localeCompare(b.name, 'es')),
       cancelled: appointments.filter((item) => item.status === 'cancelled').length,
       noShow: appointments.filter((item) => item.status === 'no_show').length,
+      sales: {
+        total: sales.length,
+        completed: completedSales,
+        rejected: rejectedSales,
+        potential: potentialSales,
+        pending: sales.length - completedSales - rejectedSales - potentialSales,
+        effectiveness: evaluatedSales ? Math.round((completedSales / evaluatedSales) * 100) : 0,
+      },
     }
   }, [appointments, cursor])
 
@@ -166,6 +191,18 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
                 />
               ))}
             </ChartCard>
+
+            <article className="chart-card dashboard-span-two">
+              <h2>Efectividad de las citas de Venta</h2>
+              <p>La efectividad considera las ventas concretadas sobre las decisiones definitivas: concretadas más rechazadas. Las posibles ventas se muestran aparte.</p>
+              <div className="sales-outcome-grid">
+                <Kpi label="Efectividad" value={`${summary.sales.effectiveness}%`} />
+                <Kpi label="Ventas concretadas" value={summary.sales.completed} />
+                <Kpi label="Ventas rechazadas" value={summary.sales.rejected} />
+                <Kpi label="Posibles ventas" value={summary.sales.potential} />
+                <Kpi label="Sin resultado" value={summary.sales.pending} />
+              </div>
+            </article>
 
             <article className="chart-card dashboard-span-two">
               <h2>Capacidad del mes por tipo operativo</h2>

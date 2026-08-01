@@ -29,6 +29,12 @@ interface CapacitySettings {
   shared_space_capacity: string
   daily_trial_limit: string
   daily_delivery_limit: string
+  appointment_duration_step_minutes: string
+  appointment_max_duration_minutes: string
+  business_day_start: string
+  business_day_end: string
+  business_break_start: string
+  business_break_end: string
 }
 
 interface Props {
@@ -56,10 +62,20 @@ const initialCapacitySettings: CapacitySettings = {
   shared_space_capacity: '1',
   daily_trial_limit: '2',
   daily_delivery_limit: '2',
+  appointment_duration_step_minutes: '15',
+  appointment_max_duration_minutes: '240',
+  business_day_start: '10:00',
+  business_day_end: '19:00',
+  business_break_start: '14:00',
+  business_break_end: '15:00',
 }
 
 export function Settings({ refreshToken, onChanged }: Props) {
-  const [tab, setTab] = useState<Tab>('appointment-types')
+  const [tab, setTab] = useState<Tab>(() => {
+    const saved = window.localStorage.getItem('casona-malu-settings-tab')
+    const tabs: Tab[] = ['appointment-types', 'capacity', 'client-types', 'slots', 'closures', 'notifications', 'templates']
+    return tabs.includes(saved as Tab) ? saved as Tab : 'appointment-types'
+  })
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
   const [clientTypes, setClientTypes] = useState<ClientType[]>([])
   const [slots, setSlots] = useState<AppointmentSlot[]>([])
@@ -74,6 +90,7 @@ export function Settings({ refreshToken, onChanged }: Props) {
   const [notice, setNotice] = useState('')
 
   useEffect(() => { void loadAll() }, [refreshToken])
+  useEffect(() => { window.localStorage.setItem('casona-malu-settings-tab', tab) }, [tab])
 
   async function loadAll() {
     const [typesResult, clientTypesResult, slotsResult, closuresResult, templatesResult, settingsResult] = await Promise.all([
@@ -95,6 +112,12 @@ export function Settings({ refreshToken, onChanged }: Props) {
       shared_space_capacity: String(settingsMap.shared_space_capacity ?? initialCapacitySettings.shared_space_capacity),
       daily_trial_limit: String(settingsMap.daily_trial_limit ?? initialCapacitySettings.daily_trial_limit),
       daily_delivery_limit: String(settingsMap.daily_delivery_limit ?? initialCapacitySettings.daily_delivery_limit),
+      appointment_duration_step_minutes: String(settingsMap.appointment_duration_step_minutes ?? initialCapacitySettings.appointment_duration_step_minutes),
+      appointment_max_duration_minutes: String(settingsMap.appointment_max_duration_minutes ?? initialCapacitySettings.appointment_max_duration_minutes),
+      business_day_start: stringValue(settingsMap.business_day_start, initialCapacitySettings.business_day_start),
+      business_day_end: stringValue(settingsMap.business_day_end, initialCapacitySettings.business_day_end),
+      business_break_start: stringValue(settingsMap.business_break_start, initialCapacitySettings.business_break_start),
+      business_break_end: stringValue(settingsMap.business_break_end, initialCapacitySettings.business_break_end),
     })
     setNotificationSettings({
       business_name: stringValue(settingsMap.business_name, initialNotificationSettings.business_name),
@@ -240,9 +263,21 @@ export function Settings({ refreshToken, onChanged }: Props) {
     const sharedCapacity = integerBetween(capacitySettings.shared_space_capacity, 1, 10)
     const dailyTrialLimit = integerBetween(capacitySettings.daily_trial_limit, 1, 20)
     const dailyDeliveryLimit = integerBetween(capacitySettings.daily_delivery_limit, 1, 20)
+    const durationStep = integerBetween(capacitySettings.appointment_duration_step_minutes, 5, 60)
+    const maximumDuration = integerBetween(capacitySettings.appointment_max_duration_minutes, 30, 480)
 
-    if (!sharedCapacity || !dailyTrialLimit || !dailyDeliveryLimit) {
-      setError('Revisa la capacidad simultánea y los máximos diarios.')
+    if (!sharedCapacity || !dailyTrialLimit || !dailyDeliveryLimit || !durationStep || !maximumDuration) {
+      setError('Revisa la capacidad, los máximos diarios y la configuración de duración.')
+      return
+    }
+    const longestBaseDuration = Math.max(0, ...appointmentTypes.filter((type) => type.active).map((type) => type.duration_minutes))
+    if (maximumDuration < longestBaseDuration) {
+      setError(`La duración máxima no puede ser inferior a la duración base más larga (${longestBaseDuration} minutos).`)
+      return
+    }
+    if (capacitySettings.business_day_start >= capacitySettings.business_day_end
+      || capacitySettings.business_break_start >= capacitySettings.business_break_end) {
+      setError('La hora de inicio debe ser anterior a la hora de término.')
       return
     }
 
@@ -251,6 +286,12 @@ export function Settings({ refreshToken, onChanged }: Props) {
       { setting_key: 'shared_space_capacity', setting_value: sharedCapacity, description: 'Capacidad simultánea del espacio de pruebas y entregas' },
       { setting_key: 'daily_trial_limit', setting_value: dailyTrialLimit, description: 'Máximo diario conjunto de Prueba 1 y Prueba 2' },
       { setting_key: 'daily_delivery_limit', setting_value: dailyDeliveryLimit, description: 'Máximo diario de entregas' },
+      { setting_key: 'appointment_duration_step_minutes', setting_value: durationStep, description: 'Incremento permitido para extender una cita' },
+      { setting_key: 'appointment_max_duration_minutes', setting_value: maximumDuration, description: 'Duración máxima de una cita extendida' },
+      { setting_key: 'business_day_start', setting_value: capacitySettings.business_day_start, description: 'Inicio de la jornada' },
+      { setting_key: 'business_day_end', setting_value: capacitySettings.business_day_end, description: 'Término de la jornada' },
+      { setting_key: 'business_break_start', setting_value: capacitySettings.business_break_start, description: 'Inicio del horario de almuerzo' },
+      { setting_key: 'business_break_end', setting_value: capacitySettings.business_break_end, description: 'Término del horario de almuerzo' },
     ]
     const { error: saveError } = await supabase.from('app_settings').upsert(rows, { onConflict: 'setting_key' })
     setSavingCapacity(false)
@@ -390,6 +431,20 @@ export function Settings({ refreshToken, onChanged }: Props) {
             </div>
           </article>
           <article className="settings-card">
+            <h2>Citas extendidas y jornada</h2>
+            <p>Estos parámetros permiten reservar más de una hora sin modificar el código. El sistema valida todo el intervalo y evita cruces con otras citas o con el almuerzo.</p>
+            <div className="form-grid three-columns">
+              <label>Incremento de duración (min)<input required type="number" min="5" max="60" value={capacitySettings.appointment_duration_step_minutes} onChange={(event) => updateCapacitySetting('appointment_duration_step_minutes', event.target.value)} /><small>Ejemplo: 15 permite 45, 60, 75, 90…</small></label>
+              <label>Duración máxima (min)<input required type="number" min="30" max="480" value={capacitySettings.appointment_max_duration_minutes} onChange={(event) => updateCapacitySetting('appointment_max_duration_minutes', event.target.value)} /></label>
+              <span />
+              <label>Inicio jornada<input required type="time" value={capacitySettings.business_day_start} onChange={(event) => updateCapacitySetting('business_day_start', event.target.value)} /></label>
+              <label>Término jornada<input required type="time" value={capacitySettings.business_day_end} onChange={(event) => updateCapacitySetting('business_day_end', event.target.value)} /></label>
+              <span />
+              <label>Inicio almuerzo<input required type="time" value={capacitySettings.business_break_start} onChange={(event) => updateCapacitySetting('business_break_start', event.target.value)} /></label>
+              <label>Término almuerzo<input required type="time" value={capacitySettings.business_break_end} onChange={(event) => updateCapacitySetting('business_break_end', event.target.value)} /></label>
+            </div>
+          </article>
+          <article className="settings-card">
             <h2>Disponibilidad de ventas</h2>
             <p>Venta no tiene un máximo diario adicional. Estarán disponibles todos los bloques activos mientras exista capacidad en cada horario.</p>
             <button className="btn btn-primary" disabled={savingCapacity} type="submit">
@@ -478,7 +533,7 @@ export function Settings({ refreshToken, onChanged }: Props) {
 
       {tab === 'templates' && (
         <div className="settings-list">
-          <div className="alert alert-info">Variables disponibles: {'{{nombre}}'}, {'{{apellido}}'}, {'{{tipo_cita}}'}, {'{{fecha}}'}, {'{{hora}}'}, {'{{direccion}}'}, {'{{telefono}}'}, {'{{instagram}}'}, {'{{correo_contacto}}'}.</div>
+          <div className="alert alert-info">Variables disponibles: {'{{nombre}}'}, {'{{apellido}}'}, {'{{tipo_cita}}'}, {'{{fecha}}'}, {'{{hora}}'}, {'{{hora_termino}}'}, {'{{duracion}}'}, {'{{horario}}'}, {'{{direccion}}'}, {'{{telefono}}'}, {'{{instagram}}'}, {'{{correo_contacto}}'}. Para citas extendidas se recomienda usar {'{{horario}}'}.</div>
           {templates.map((template, index) => (
             <article className="settings-card" key={template.id}>
               <h2>{template.name}</h2>

@@ -27,15 +27,24 @@ function appointmentClass(appointment: Appointment) {
 }
 
 export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointment }: Props) {
-  const [view, setView] = useState<CalendarView>('day')
-  const [cursor, setCursor] = useState(new Date())
+  const [view, setView] = useState<CalendarView>(() => {
+    const saved = window.localStorage.getItem('casona-malu-agenda-view')
+    return saved === 'week' || saved === 'month' ? saved : 'day'
+  })
+  const [cursor, setCursor] = useState(() => {
+    const saved = window.localStorage.getItem('casona-malu-agenda-date')
+    const value = saved ? new Date(`${saved}T12:00:00`) : new Date()
+    return Number.isNaN(value.getTime()) ? new Date() : value
+  })
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [globalResults, setGlobalResults] = useState<Appointment[]>([])
   const [types, setTypes] = useState<AppointmentType[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [error, setError] = useState('')
+  const [searching, setSearching] = useState(false)
 
   const range = useMemo(() => getCalendarRange(view, cursor), [view, cursor])
 
@@ -47,6 +56,22 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       .subscribe()
     return () => { void supabase.removeChannel(channel) }
   }, [range.from, range.to, refreshToken])
+
+  useEffect(() => {
+    window.localStorage.setItem('casona-malu-agenda-view', view)
+    window.localStorage.setItem('casona-malu-agenda-date', toIsoDate(cursor))
+  }, [cursor, view])
+
+  useEffect(() => {
+    const query = search.trim()
+    if (!query) {
+      setGlobalResults([])
+      setSearching(false)
+      return
+    }
+    const timer = window.setTimeout(() => void loadGlobalResults(query), 300)
+    return () => window.clearTimeout(timer)
+  }, [refreshToken, search])
 
   async function loadData() {
     setLoading(true)
@@ -67,18 +92,69 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
     setLoading(false)
   }
 
+  async function loadGlobalResults(query: string) {
+    setSearching(true)
+    setError('')
+    const allAppointments: Appointment[] = []
+    const pageSize = 1000
+    let page = 0
+    let searchError: { message: string } | null = null
+    while (!searchError) {
+      const { data, error: pageError } = await supabase
+        .from('appointments')
+        .select('*, client:clients(*, client_type:client_types(*)), appointment_type:appointment_types(*)')
+        .order('appointment_date', { ascending: false })
+        .order('start_time')
+        .range(page * pageSize, page * pageSize + pageSize - 1)
+      if (pageError) {
+        searchError = pageError
+        break
+      }
+      allAppointments.push(...((data ?? []) as Appointment[]))
+      if ((data?.length ?? 0) < pageSize) break
+      page += 1
+    }
+    if (searchError) {
+      setError(searchError.message)
+      setGlobalResults([])
+    } else {
+      const normalized = query.toLocaleLowerCase('es-CL').replace(/^@/, '')
+      const compactDate = normalized.replace(/\//g, '-')
+      setGlobalResults(allAppointments.filter((appointment) => {
+        const client = appointment.client
+        const values = [
+          client?.first_name,
+          client?.last_name,
+          client?.email,
+          client?.phone,
+          client?.instagram,
+          appointment.appointment_type?.name,
+          appointment.appointment_date,
+          formatDate(appointment.appointment_date),
+        ]
+        return values.some((value) => (value ?? '').toLocaleLowerCase('es-CL').replace(/^@/, '').includes(normalized))
+          || appointment.appointment_date.includes(compactDate)
+      }))
+    }
+    setSearching(false)
+  }
+
   const filtered = useMemo(() => {
-    const normalized = search.trim().toLowerCase()
     return appointments.filter((appointment) => {
-      const client = appointment.client
-      const haystack = `${client?.first_name ?? ''} ${client?.last_name ?? ''} ${client?.email ?? ''} ${client?.phone ?? ''}`.toLowerCase()
       return (
-        (!normalized || haystack.includes(normalized)) &&
         (!typeFilter || appointment.appointment_type_id === typeFilter) &&
         (!statusFilter || appointment.status === statusFilter)
       )
     })
-  }, [appointments, search, statusFilter, typeFilter])
+  }, [appointments, statusFilter, typeFilter])
+
+  const filteredGlobal = useMemo(
+    () => globalResults.filter((appointment) => (
+      (!typeFilter || appointment.appointment_type_id === typeFilter)
+      && (!statusFilter || appointment.status === statusFilter)
+    )),
+    [globalResults, statusFilter, typeFilter],
+  )
 
   function navigate(amount: number) {
     if (view === 'day') setCursor(addDays(cursor, amount))
@@ -124,8 +200,8 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
 
       <div className="filter-grid no-print">
         <label>
-          Buscar cliente
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre, correo o teléfono" />
+          Búsqueda global
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, Instagram, correo, tipo o fecha" />
         </label>
         <label>
           Tipo de cita
@@ -147,7 +223,13 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       </div>
 
       {error && <div className="alert alert-danger">{error}</div>}
-      {loading ? <div className="loading-state">Cargando agenda…</div> : (
+      {search.trim() ? (
+        <GlobalSearchResults
+          appointments={filteredGlobal}
+          loading={searching}
+          onOpen={onOpenAppointment}
+        />
+      ) : loading ? <div className="loading-state">Cargando agenda…</div> : (
         <>
           {view === 'day' && (
             <DayView
@@ -176,6 +258,35 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
         </>
       )}
     </section>
+  )
+}
+
+function GlobalSearchResults({ appointments, loading, onOpen }: {
+  appointments: Appointment[]
+  loading: boolean
+  onOpen: (appointment: Appointment) => void
+}) {
+  if (loading) return <div className="loading-state">Buscando en toda la agenda…</div>
+  return (
+    <div className="global-search-results">
+      <div className="calendar-day-header">
+        <div>
+          <strong>Resultados en toda la agenda</strong>
+          <span>{appointments.length} cita(s), sin limitar por día, semana o mes</span>
+        </div>
+      </div>
+      <div className="appointment-list">
+        {appointments.length === 0
+          ? <div className="empty-state">No se encontraron citas con estos criterios.</div>
+          : appointments.map((appointment) => (
+            <button type="button" className="global-result-row" key={appointment.id} onClick={() => onOpen(appointment)}>
+              <span><strong>{appointment.client?.first_name} {appointment.client?.last_name}</strong><small>{appointment.client?.email} · {appointment.client?.phone}</small></span>
+              <span><strong>{appointment.appointment_type?.name}</strong><small>{statusLabel(appointment.status)}</small></span>
+              <span><strong>{formatDate(appointment.appointment_date)}</strong><small>{formatTime(appointment.start_time)}–{formatTime(appointment.end_time)}</small></span>
+            </button>
+          ))}
+      </div>
+    </div>
   )
 }
 

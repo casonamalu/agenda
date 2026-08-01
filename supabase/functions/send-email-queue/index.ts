@@ -159,7 +159,7 @@ async function buildEmail(
   const [{ data: appointment, error: appointmentError }, { data: template, error: templateError }] = await Promise.all([
     supabase
       .from('appointments')
-      .select('appointment_date,start_time,client:clients(first_name,last_name,email),appointment_type:appointment_types(name)')
+      .select('appointment_date,start_time,end_time,client:clients(first_name,last_name,email),appointment_type:appointment_types(name,duration_minutes)')
       .eq('id', item.appointment_id)
       .single(),
     supabase.from('email_templates').select('subject,body_html,active').eq('template_key', item.kind).single(),
@@ -170,12 +170,19 @@ async function buildEmail(
   const client = Array.isArray(appointment.client) ? appointment.client[0] : appointment.client
   const appointmentType = Array.isArray(appointment.appointment_type) ? appointment.appointment_type[0] : appointment.appointment_type
   const timezone = stringSetting(settingsMap, 'timezone', 'America/Santiago')
+  const startTime = String(appointment.start_time).slice(0, 5)
+  const endTime = String(appointment.end_time).slice(0, 5)
+  const durationMinutes = timeDifference(startTime, endTime)
+  const extended = durationMinutes > Number(appointmentType?.duration_minutes ?? durationMinutes)
   const variables: Record<string, string> = {
     nombre: client?.first_name ?? '',
     apellido: client?.last_name ?? '',
     tipo_cita: appointmentType?.name ?? '',
     fecha: new Intl.DateTimeFormat('es-CL', { dateStyle: 'long', timeZone: timezone }).format(new Date(`${appointment.appointment_date}T12:00:00Z`)),
-    hora: String(appointment.start_time).slice(0, 5),
+    hora: startTime,
+    hora_termino: endTime,
+    duracion: String(durationMinutes),
+    horario: extended ? `${startTime} a ${endTime} (${durationMinutes} minutos)` : startTime,
     direccion: stringSetting(settingsMap, 'address', ''),
     telefono: stringSetting(settingsMap, 'contact_phone', ''),
     instagram: stringSetting(settingsMap, 'instagram', ''),
@@ -216,7 +223,7 @@ async function buildReportEmail(
 
   let query = supabase
     .from('appointments')
-    .select('appointment_date,start_time,status,client:clients(first_name,last_name,phone),appointment_type:appointment_types(name)')
+    .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),appointment_type:appointment_types(name)')
     .gte('appointment_date', from)
     .lte('appointment_date', to)
     .order('appointment_date')
@@ -254,7 +261,7 @@ async function buildReportEmail(
     const type = Array.isArray(appointment.appointment_type) ? appointment.appointment_type[0] : appointment.appointment_type
     const values: Record<string, string> = {
       date: formatReportDate(appointment.appointment_date, timezone),
-      time: String(appointment.start_time).slice(0, 5),
+      time: `${String(appointment.start_time).slice(0, 5)}–${String(appointment.end_time).slice(0, 5)}`,
       appointment_type: type?.name ?? '',
       client_name: `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim(),
       phone: client?.phone ?? '',
@@ -383,6 +390,12 @@ function statusLabel(status: string) {
     cancelled: 'Cancelada',
     no_show: 'No asistió',
   } as Record<string, string>)[status] ?? status
+}
+
+function timeDifference(start: string, end: string) {
+  const [startHour, startMinute] = start.split(':').map(Number)
+  const [endHour, endMinute] = end.split(':').map(Number)
+  return Math.max(0, (endHour * 60 + endMinute) - (startHour * 60 + startMinute))
 }
 
 function escapeHtml(value: string) {

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import writeXlsxFile, { type Column } from 'write-excel-file/browser'
+import type { Column } from 'write-excel-file/browser'
 import { formatDate } from '../lib/date'
 import { supabase } from '../lib/supabase'
 import type { Client, ClientType, Profile } from '../types'
@@ -128,6 +128,7 @@ export function Clients({ profile, refreshToken, onChanged }: Props) {
   }
 
   async function exportXlsx() {
+    const { default: writeXlsxFile } = await import('write-excel-file/browser')
     const rows = exportRows()
     type Row = (typeof rows)[number]
     const columns: Column<Row>[] = [

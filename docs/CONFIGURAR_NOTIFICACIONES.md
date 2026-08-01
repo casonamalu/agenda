@@ -65,7 +65,10 @@ Con el dominio ya verificado:
 
 ## 5. Configurar secretos en Supabase
 
-Genera además un valor aleatorio largo para `CRON_SECRET`. Desde Supabase CLI, vinculado al proyecto, ejecuta:
+Genera además un valor aleatorio largo para `CRON_SECRET`. Debes conservar el
+mismo valor en dos ubicaciones: Edge Functions Secrets con nombre
+`CRON_SECRET` y Vault con nombre `cron_secret`. Desde Supabase CLI, vinculado
+al proyecto, ejecuta:
 
 ```bash
 supabase secrets set RESEND_API_KEY=re_REEMPLAZAR
@@ -74,6 +77,18 @@ supabase secrets set CRON_SECRET=REEMPLAZAR_POR_UN_VALOR_ALEATORIO_LARGO
 ```
 
 No uses una clave `service_role`, contraseña de base de datos ni JWT secret como `CRON_SECRET`.
+
+Guarda la misma clave en Vault desde SQL Editor:
+
+```sql
+select vault.create_secret(
+  'PEGA-AQUI-LA-MISMA-CLAVE',
+  'cron_secret',
+  'Autorización del procesador automático de correos'
+);
+```
+
+La clave real no se escribe en `CONFIGURAR_CRON.sql`.
 
 ## 6. Desplegar la función
 
@@ -91,12 +106,8 @@ Activa `pg_cron` y `pg_net` en Supabase. Después abre:
 docs/CONFIGURAR_CRON.sql
 ```
 
-Reemplaza:
-
-- `TU-PROYECTO` por el identificador real del proyecto.
-- `TU-CRON-SECRET` por exactamente el mismo valor configurado como secreto.
-
-Ejecuta el SQL una vez. La cola se revisará cada cinco minutos.
+El archivo ya contiene el identificador del proyecto y lee el secreto desde
+Vault. Ejecútalo una vez. La cola se revisará cada minuto.
 
 ## 8. Completar la configuración desde la agenda
 
@@ -116,7 +127,7 @@ Usa primero un correo propio:
 
 1. Crea un cliente de prueba con ese correo.
 2. Agenda una cita futura.
-3. Espera hasta cinco minutos.
+3. Espera hasta dos minutos.
 4. Abre **Correos** y confirma que el registro pase de `Pendiente` a `Enviado`.
 5. Comprueba la bandeja de entrada y spam.
 6. Reprograma la cita y verifica el segundo correo.

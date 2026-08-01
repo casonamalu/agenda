@@ -1,61 +1,71 @@
-# Actualización final del sistema existente
+# Actualización del backlog operativo
 
-Esta guía corresponde al sistema Agenda Casona Malú que ya está publicado en
-Vercel y conectado al proyecto Supabase:
+Esta guía actualiza la Agenda Casona Malú existente conectada al proyecto
+Supabase `qaguhjvphiaefsporxgu`. Conserva las 115 citas, clientes, usuarios,
+configuraciones, correos e historial. No limpia la base y no repite la
+migración de datos.
 
-```text
-qaguhjvphiaefsporxgu
-```
+## Qué incorpora
 
-La actualización conserva los usuarios, clientes y las 114 citas migradas. No
-se debe limpiar la base ni volver a ejecutar los archivos de migración de datos.
+- Orden fijo de indicadores: Venta, Prueba 1, Prueba 2 y Entrega.
+- Resultado de cada cita de Venta: concretada, rechazada o posible.
+- Indicador mensual de efectividad comercial.
+- Búsqueda global de citas, independiente de la vista diaria, semanal o mensual.
+- Conservación del módulo, vista y fecha al minimizar, recargar o renovar sesión.
+- Instagram y autorización de campañas en la ficha de cliente.
+- Filtros y exportación administrativa de clientes a Excel o CSV, con auditoría.
+- Citas extendidas en intervalos configurables, validando todo el tramo.
+- Horario completo en correos cuando una cita tiene duración extendida.
+- Documentación final del proceso automático de correo con Vault y ejecución
+  cada minuto.
 
-## Resultado de esta versión
+## 1. Preparar y respaldar la carpeta local
 
-- Máximo diario configurable de 2 pruebas, contando conjuntamente Prueba 1 y
-  Prueba 2.
-- Máximo diario configurable de 2 entregas.
-- Venta disponible en todos sus bloques activos, sin máximo diario adicional.
-- Pruebas y entregas siguen compartiendo el espacio físico simultáneo.
-- Menú Configuración con Mantenedores, Usuarios, Correos y Auditoría.
-- Confirmación visible al crear cierres y prevención de cierres duplicados.
-- Indicadores mensuales de carga y capacidad separados en Venta, Pruebas y
-  Entrega.
-- Reportes programables por día, hora, período, destinatarios, tipos de cita y
-  estados.
-- Cola de correos con reintentos, control de duplicados y reportes automáticos.
-
-## 1. Respaldar la copia local
-
-La carpeta local utilizada es:
+La carpeta de trabajo es:
 
 ```text
 C:\Users\dperel\Downloads\agenda-local
 ```
 
-Antes de reemplazar archivos:
+1. Si `npm run dev` está activo, vuelve a esa ventana de PowerShell y presiona
+   `Ctrl + C`.
+2. En el Explorador de archivos copia la carpeta completa `agenda-local`.
+3. Pega la copia en `C:\Users\dperel\Downloads` y nómbrala, por ejemplo:
 
-1. Cierra `npm run dev` con `Ctrl + C`.
-2. Copia la carpeta `agenda-local` y nombra la copia
-   `agenda-local-respaldo`.
-3. Conserva el archivo `.env.local` de la carpeta original.
-4. No publiques `.env.local` en GitHub.
+```text
+agenda-local-respaldo-antes-backlog
+```
 
-## 2. Actualizar los archivos locales
+4. No borres de la carpeta original:
 
-1. Descomprime el paquete final.
+```text
+.git
+.env.local
+```
+
+La copia es solo un respaldo. Todos los pasos siguientes se ejecutan en
+`agenda-local`.
+
+## 2. Copiar el paquete nuevo
+
+1. Descarga y descomprime `agenda-casona-malu-backlog.zip`.
 2. Abre la carpeta descomprimida `agenda-main`.
-3. Copia su contenido dentro de:
+3. Selecciona todo su contenido: `src`, `supabase`, `docs`, `package.json` y los
+   demás archivos.
+4. Copia ese contenido.
+5. Abre:
 
 ```text
 C:\Users\dperel\Downloads\agenda-local
 ```
 
-4. Acepta reemplazar los archivos existentes.
-5. No elimines las carpetas `.git` ni el archivo `.env.local` de
-   `agenda-local`.
+6. Pega y elige **Reemplazar los archivos en el destino**.
 
-## 3. Probar la actualización localmente
+Se copia el contenido de `agenda-main` dentro de `agenda-local`; no se debe
+crear `agenda-local\agenda-main`. El paquete no incluye `.git` ni `.env.local`,
+por lo que ambos se mantienen.
+
+## 3. Instalar y validar el código
 
 Abre PowerShell y ejecuta:
 
@@ -64,148 +74,184 @@ Set-Location "C:\Users\dperel\Downloads\agenda-local"
 npm install
 npm run typecheck
 npm run build
-npm run dev
 ```
 
-Abre:
+Los dos últimos comandos deben terminar sin errores. La carpeta `dist` se
+genera solo como resultado de la prueba y Git la ignora.
 
-```text
-http://localhost:5173
-```
+## 4. Actualizar primero la función de correos
 
-Comprueba:
+Haz este despliegue antes de modificar las plantillas de la base. Así el
+procesador ya reconocerá los nuevos datos de horario cuando Cron ejecute el
+siguiente minuto.
 
-1. Que puedas iniciar sesión.
-2. Que aparezcan las citas y clientes existentes.
-3. Que el menú Configuración se despliegue.
-4. Que aparezca el módulo Reportes.
-5. Que Indicadores muestre Venta, Pruebas y Entrega.
-6. Que Mantenedores muestre 2 pruebas y 2 entregas como límites separados.
-
-Detén el servidor con `Ctrl + C`.
-
-## 4. Actualizar Supabase
-
-No vuelvas a ejecutar la migración inicial ni los scripts que importaron las
-citas.
-
-En **Supabase → SQL Editor → New query**, ejecuta cada archivo completo, uno
-por uno y en este orden:
-
-```text
-1. supabase/migrations/202607260001_notifications.sql
-2. supabase/migrations/202607260002_daily_capacity_rules.sql
-3. supabase/migrations/202607270001_system_improvements.sql
-```
-
-Los archivos están preparados para conservar los datos existentes. La tercera
-migración elimina únicamente cierres activos exactamente duplicados y deja uno
-de ellos vigente.
-
-Al terminar ejecuta:
-
-```sql
-select
-  public.setting_int('daily_trial_limit', 2) as maximo_diario_pruebas,
-  public.setting_int('daily_delivery_limit', 2) as maximo_diario_entregas,
-  public.setting_int('shared_space_capacity', 1) as capacidad_simultanea;
-```
-
-El resultado esperado es:
-
-```text
-maximo_diario_pruebas: 2
-maximo_diario_entregas: 2
-capacidad_simultanea: 1
-```
-
-## 5. Probar las reglas de capacidad
-
-Usa un día futuro de prueba y confirma:
-
-- Prueba 1 + Prueba 2: permitido.
-- Prueba 1 + Prueba 1: permitido.
-- Una tercera Prueba 1 o Prueba 2: bloqueada.
-- Dos entregas: permitido.
-- Una tercera entrega: bloqueada.
-- Dos pruebas + dos entregas el mismo día: permitido si los horarios no se
-  superponen en el espacio compartido.
-- Las ventas siguen disponibles en todos los bloques activos.
-
-El Administrador tampoco puede sobrepasar los máximos diarios. Sí puede usar el
-sobrecupo para otras restricciones cuando corresponda.
-
-## 6. Publicar el código en GitHub
-
-Si Git funciona en PowerShell:
+En la misma ventana de PowerShell:
 
 ```powershell
 Set-Location "C:\Users\dperel\Downloads\agenda-local"
-git status
+npx supabase functions deploy send-email-queue --project-ref qaguhjvphiaefsporxgu --no-verify-jwt
+```
+
+El aviso `Docker is not running` no impide este despliegue. Debe aparecer:
+
+```text
+Deployed Functions on project qaguhjvphiaefsporxgu: send-email-queue
+```
+
+No cambies `RESEND_API_KEY`, `EMAIL_FROM`, `CRON_SECRET`, Vault ni el trabajo
+Cron que ya está activo. La documentación corregida para una recuperación
+futura queda en `docs/CONFIGURAR_CRON.sql`.
+
+## 5. Aplicar únicamente la migración nueva
+
+No vuelvas a ejecutar `202607240001_init.sql`, las migraciones anteriores ni
+los SQL de importación.
+
+1. En el Explorador abre:
+
+```text
+C:\Users\dperel\Downloads\agenda-local\supabase\migrations\202607300001_backlog_improvements.sql
+```
+
+2. Ábrelo con Visual Studio Code.
+3. Selecciona todo con `Ctrl + A` y copia con `Ctrl + C`.
+4. Ve a **Supabase → SQL Editor → New query**.
+5. Pega el contenido completo y presiona **Run**.
+
+Supabase puede advertir que la consulta modifica objetos de la base. Es
+esperable porque agrega columnas, un tipo de resultado y funciones. El script no contiene
+`DROP TABLE`, no elimina citas y no limpia clientes. Confirma la ejecución.
+
+El resultado final debe mostrar una fila con la configuración de duración.
+Después ejecuta esta verificación independiente:
+
+```sql
+select
+  (select count(*) from public.appointments) as citas_conservadas,
+  public.setting_int('daily_trial_limit', 2) as maximo_pruebas,
+  public.setting_int('daily_delivery_limit', 2) as maximo_entregas,
+  public.setting_int('appointment_duration_step_minutes', 15) as incremento,
+  public.setting_int('appointment_max_duration_minutes', 240) as duracion_maxima,
+  exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'clients'
+      and column_name = 'instagram'
+  ) as instagram_disponible;
+```
+
+El número de citas debe seguir siendo `115`, salvo que se hayan creado citas
+reales después de la última revisión. Los otros resultados esperados son
+`2`, `2`, `15`, `240` y `true`.
+
+## 6. Probar localmente
+
+Ejecuta:
+
+```powershell
+npm run dev
+```
+
+Abre `http://localhost:5173` e inicia sesión. Realiza estas comprobaciones:
+
+1. **Persistencia:** entra a Clientes o Indicadores, minimiza el navegador,
+   vuelve y presiona `F5`. Debe conservar el módulo.
+2. **Búsqueda global:** en Agenda, sitúate en un día y busca una cliente que
+   tenga una cita en otro mes. Debe aparecer igualmente.
+3. **Cliente:** abre una ficha, registra Instagram sin necesidad de guardar
+   `@`, y prueba la autorización de campañas.
+4. **Exportación:** como Administrador, filtra Clientes y descarga Excel y CSV.
+   Los archivos deben contener solo el resultado filtrado.
+5. **Cita extendida:** crea una cita de prueba con un correo propio, elige una
+   duración superior a la base y confirma que el horario final sea correcto.
+6. **Tramo ocupado:** intenta crear otra cita que se cruce con cualquier parte
+   de la cita extendida. Debe bloquearse.
+7. **Límites:** confirma que se mantengan dos pruebas combinadas y dos entregas
+   por día. Una cita extendida cuenta como una sola cita diaria.
+8. **Resultado de Venta:** abre una Venta cuya hora ya comenzó y registra uno
+   de los tres resultados.
+9. **Indicadores:** revisa el orden de tipos y el bloque de efectividad.
+10. **Correo:** confirma que el correo de la cita extendida muestre el rango
+    horario.
+
+Cancela o elimina las citas creadas exclusivamente para la prueba.
+
+Detén Vite con `Ctrl + C`.
+
+## 7. Revisar exactamente lo que irá a GitHub
+
+Ejecuta:
+
+```powershell
+git status -sb
+git check-ignore -v .env.local
+```
+
+`.env.local` debe aparecer ignorado. Nunca ejecutes `git add` sobre ese archivo.
+
+Luego:
+
+```powershell
 git add .
-git commit -m "Agrega configuraciones indicadores reportes y reglas de capacidad"
+git status --short
+```
+
+Revisa que no aparezcan `node_modules`, `dist`, `.env.local` ni archivos
+`*.tsbuildinfo`.
+
+## 8. Crear el commit y subirlo
+
+```powershell
+git commit -m "Implementa backlog de agenda clientes y resultados comerciales"
 git push origin main
 ```
 
-Si PowerShell muestra que `git` no se reconoce, usa GitHub Desktop o carga los
-archivos desde **GitHub → repositorio casonamalu/agenda → Add file → Upload
-files**. No cargues `.env.local`, `node_modules` ni `dist`.
+Verifica:
 
-## 7. Verificar el despliegue en Vercel
+```powershell
+git status -sb
+git log -3 --oneline --decorate
+```
 
-Después del `push`, Vercel debería crear automáticamente un despliegue de
-Production.
+El estado esperado es:
+
+```text
+## main...origin/main
+```
+
+## 9. Verificar Vercel
 
 1. Abre **Vercel → proyecto Agenda → Deployments**.
-2. Espera que el último despliegue indique **Ready**.
-3. Abre la URL pública que ya configuraste para acceder directamente al login
-   de Casona Malú.
-4. Prueba en una ventana incógnita.
+2. Espera que el despliegue de Production indique **Ready**.
+3. Abre la URL pública en una ventana incógnita.
+4. Repite las pruebas esenciales de inicio de sesión, búsqueda, duración y
+   resultado de Venta.
 
-Las variables deben seguir existiendo en Vercel:
-
-```text
-VITE_SUPABASE_URL=https://qaguhjvphiaefsporxgu.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-```
-
-No es necesario cambiar sus valores si el login publicado ya funciona.
-
-## 8. Activar notificaciones cuando Resend esté verificado
-
-No actives todavía el proceso automático si
-`notificaciones.casonamalu.cl` continúa pendiente en Resend.
-
-Cuando aparezca **Verified**, sigue:
+No se deben modificar las variables de Vercel si el login ya funciona:
 
 ```text
-docs/CONFIGURAR_NOTIFICACIONES.md
+VITE_SUPABASE_URL
+VITE_SUPABASE_PUBLISHABLE_KEY
 ```
 
-En resumen:
+## 10. Validación de seguridad y operación
 
-1. Crea la API Key de Resend.
-2. Configura `RESEND_API_KEY`, `EMAIL_FROM` y `CRON_SECRET` como secretos de
-   Supabase.
-3. Despliega `send-email-queue`.
-4. Activa `pg_cron` y `pg_net`.
-5. Completa y ejecuta `docs/CONFIGURAR_CRON.sql`.
-6. Realiza una prueba controlada con un correo propio.
+Ejecuta en Supabase:
 
-No escribas la clave de Resend ni `CRON_SECRET` en el código, GitHub, Vercel o
-mensajes.
+```sql
+select jobid, jobname, schedule, active
+from cron.job
+where jobname = 'casona-malu-email-queue';
 
-## 9. Validación final
+select kind, status, count(*)
+from public.email_queue
+group by kind, status
+order by kind, status;
+```
 
-Antes de entregar el sistema al equipo:
+El Cron debe estar activo con `* * * * *`. Revisa además que una exportación
+haya quedado en **Auditoría** con tabla `clients` y acción `EXPORT`.
 
-1. Inicia sesión con cada rol.
-2. Crea, reprograma y cancela una cita de prueba.
-3. Confirma los límites de 2 pruebas y 2 entregas.
-4. Crea el mismo cierre dos veces y comprueba que el segundo se rechace.
-5. Revisa Indicadores para un mes que tenga citas.
-6. Crea un reporte programado de prueba.
-7. Comprueba el sistema desde computador y teléfono.
-8. Elimina o cancela los registros creados para pruebas.
-
-Después de estas verificaciones, el sistema puede comenzar su uso productivo.
+Esta actualización no implementa todavía Caja, Taller ni órdenes de
+producción; esos módulos continúan como una fase posterior independiente.

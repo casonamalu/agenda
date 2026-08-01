@@ -5,5 +5,5 @@ dist/
 .env.*.local
 .DS_Store
 *.log
-.supabase/
 *.tsbuildinfo
+.supabase/

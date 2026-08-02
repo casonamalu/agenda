@@ -83,6 +83,9 @@ create index orders_workshop_idx on public.orders(status, planned_week_start, pr
   where status not in ('closed', 'cancelled');
 create index orders_source_appointment_idx on public.orders(source_appointment_id)
   where source_appointment_id is not null;
+create index orders_seller_idx on public.orders(seller_id) where seller_id is not null;
+create index orders_created_by_idx on public.orders(created_by);
+create index orders_updated_by_idx on public.orders(updated_by);
 
 create table public.order_financials (
   id uuid primary key default gen_random_uuid(),
@@ -99,6 +102,8 @@ create table public.order_financials (
   updated_at timestamptz not null default now(),
   constraint order_financial_discount check (discount_amount <= gross_sale_amount)
 );
+create index order_financials_created_by_idx on public.order_financials(created_by);
+create index order_financials_updated_by_idx on public.order_financials(updated_by);
 
 create table public.order_cost_items (
   id uuid primary key default gen_random_uuid(),
@@ -114,6 +119,7 @@ create table public.order_cost_items (
   created_at timestamptz not null default now()
 );
 create index order_cost_items_order_idx on public.order_cost_items(order_id, phase, category);
+create index order_cost_items_created_by_idx on public.order_cost_items(created_by);
 
 create table public.order_payments (
   id uuid primary key default gen_random_uuid(),
@@ -135,6 +141,7 @@ create table public.order_payments (
   )
 );
 create index order_payments_order_idx on public.order_payments(order_id, paid_at desc);
+create index order_payments_created_by_idx on public.order_payments(created_by);
 create unique index order_payment_single_reversal_idx on public.order_payments(reversal_of)
   where reversal_of is not null;
 
@@ -158,6 +165,8 @@ create table public.cash_movements (
   )
 );
 create index cash_movements_date_idx on public.cash_movements(occurred_at desc);
+create index cash_movements_order_idx on public.cash_movements(order_id) where order_id is not null;
+create index cash_movements_created_by_idx on public.cash_movements(created_by);
 create unique index cash_movement_single_reversal_idx on public.cash_movements(reversal_of)
   where reversal_of is not null;
 
@@ -172,6 +181,8 @@ create table public.workshop_capacity_exceptions (
   updated_at timestamptz not null default now(),
   constraint workshop_capacity_monday check (extract(isodow from week_start) = 1)
 );
+create index workshop_capacity_created_by_idx on public.workshop_capacity_exceptions(created_by);
+create index workshop_capacity_updated_by_idx on public.workshop_capacity_exceptions(updated_by);
 
 alter table public.appointments
   add column order_id uuid references public.orders(id) on delete set null;
@@ -619,7 +630,7 @@ from public.orders o
 join public.order_financials f on f.order_id = o.id
 left join public.order_cost_items ci on ci.order_id = o.id
 group by o.id, o.order_sequence, f.order_id, f.gross_sale_amount, f.discount_amount,
-  f.workshop_hourly_cost_snapshot, f.sales_commission_rate_snapshot;
+  f.tax_rate_snapshot, f.workshop_hourly_cost_snapshot, f.sales_commission_rate_snapshot;
 
 alter table public.orders enable row level security;
 alter table public.order_financials enable row level security;
@@ -631,7 +642,7 @@ alter table public.workshop_capacity_exceptions enable row level security;
 create policy orders_select_internal on public.orders for select to authenticated
   using (public.is_internal_user());
 create policy orders_insert_commercial on public.orders for insert to authenticated
-  with check (public.can_manage_commercial() and created_by = auth.uid());
+  with check (public.can_manage_commercial() and created_by = (select auth.uid()));
 create policy orders_update_operational on public.orders for update to authenticated
   using (public.can_manage_commercial() or public.can_manage_workshop())
   with check (public.can_manage_commercial() or public.can_manage_workshop());
@@ -656,17 +667,21 @@ create policy order_cost_items_delete_operations on public.order_cost_items for 
 create policy order_payments_select_commercial on public.order_payments for select to authenticated
   using (public.can_manage_commercial());
 create policy order_payments_insert_commercial on public.order_payments for insert to authenticated
-  with check (public.can_manage_commercial() and created_by = auth.uid());
+  with check (public.can_manage_commercial() and created_by = (select auth.uid()));
 
 create policy cash_movements_select_commercial on public.cash_movements for select to authenticated
   using (public.can_manage_commercial());
 create policy cash_movements_insert_commercial on public.cash_movements for insert to authenticated
-  with check (public.can_manage_commercial() and created_by = auth.uid());
+  with check (public.can_manage_commercial() and created_by = (select auth.uid()));
 
 create policy workshop_capacity_select_internal on public.workshop_capacity_exceptions for select to authenticated
   using (public.is_internal_user());
-create policy workshop_capacity_manage on public.workshop_capacity_exceptions for all to authenticated
+create policy workshop_capacity_insert on public.workshop_capacity_exceptions for insert to authenticated
+  with check (public.can_manage_workshop());
+create policy workshop_capacity_update on public.workshop_capacity_exceptions for update to authenticated
   using (public.can_manage_workshop()) with check (public.can_manage_workshop());
+create policy workshop_capacity_delete on public.workshop_capacity_exceptions for delete to authenticated
+  using (public.can_manage_workshop());
 
 revoke all on function public.can_manage_commercial() from public, anon, authenticated;
 revoke all on function public.can_manage_workshop() from public, anon, authenticated;

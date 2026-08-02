@@ -58,7 +58,7 @@ export function Users({ refreshToken, onChanged }: { refreshToken: number; onCha
           <label>Nombre completo<input name="full_name" required /></label>
           <label>Correo<input name="email" type="email" required /></label>
           <label>Rol<select name="role"><option value="seller">Vendedora</option><option value="reception">Recepción</option><option value="admin">Administrador</option></select></label>
-          <label>Contraseña temporal<input name="password" type="password" minLength={8} required /></label>
+          <label>Contraseña temporal<input name="password" type="password" minLength={12} required /></label>
         </div>
         <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Creando…' : 'Crear usuario'}</button>
       </form>

@@ -10,7 +10,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.0.0",
+    "@supabase/supabase-js": "2.110.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "write-excel-file": "4.1.1"

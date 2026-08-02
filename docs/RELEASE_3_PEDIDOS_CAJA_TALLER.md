@@ -13,6 +13,10 @@ Esta versión transforma la agenda en el núcleo operativo de Casona Malú sin i
 - Capacidad semanal del taller y excepciones por semana.
 - Rentabilidad por pedido considerando venta neta de IVA, materiales, mano de obra y comisiones.
 - Rol `workshop` sin acceso a Caja ni Rentabilidad.
+- Pagos y movimientos de caja registrados exclusivamente mediante RPC validadas.
+- Reversos inmutables y trazables; no se permite fabricar reversas desde el cliente.
+- Pedidos cerrados con datos financieros y costos inmutables.
+- Rol Taller limitado a estado, semana y horas de producción.
 
 ## Preparación segura
 
@@ -48,6 +52,8 @@ Esta versión transforma la agenda en el núcleo operativo de Casona Malú sin i
 8. Vincular una cita de Prueba al pedido.
 9. Revisar Rentabilidad y confirmar venta neta, IVA, costos y margen.
 10. Ingresar como usuaria Taller y confirmar que no aparecen Caja ni Rentabilidad.
+11. Confirmar que un pago negativo y una inserción directa en Caja son rechazados.
+12. Cerrar un pedido de prueba y confirmar que no admite nuevos cambios financieros.
 
 ## Consultas de verificación
 

@@ -78,14 +78,20 @@ export function Workshop({ profile, refreshToken, onChanged }: Props) {
       setError(`Indica el motivo de la desviación en ${orderCode(order.order_sequence)}.`)
       return
     }
-    const { error: updateError } = await supabase.from('orders').update({
-      status: String(form.get('status')),
-      planned_week_start: String(form.get('planned_week_start')) || null,
-      planned_hours: planned,
-      actual_hours: actual,
-      variance_reason: reason,
-      updated_by: profile.id,
-    }).eq('id', order.id)
+    const { error: updateError } = await supabase.rpc('update_order_operations', {
+      p_order_id: order.id,
+      p_status: String(form.get('status')),
+      p_production_start_date: order.production_start_date,
+      p_planned_week_start: String(form.get('planned_week_start')) || null,
+      p_promised_delivery_date: order.promised_delivery_date,
+      p_actual_delivery_date: order.actual_delivery_date,
+      p_planned_hours: planned,
+      p_actual_hours: actual,
+      p_variance_reason: reason,
+      p_needs_fitting_1: order.needs_fitting_1,
+      p_needs_fitting_2: order.needs_fitting_2,
+      p_internal_notes: order.internal_notes,
+    })
     if (updateError) setError(updateError.message)
     else { await loadData(); onChanged(`Pedido ${orderCode(order.order_sequence)} actualizado.`) }
   }

@@ -103,20 +103,20 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
       return
     }
     setLoading(true)
-    const { error: updateError } = await supabase.from('orders').update({
-      status: String(form.get('status')),
-      production_start_date: String(form.get('production_start_date')) || null,
-      planned_week_start: String(form.get('planned_week_start')) || null,
-      promised_delivery_date: String(form.get('promised_delivery_date')) || null,
-      actual_delivery_date: String(form.get('actual_delivery_date')) || null,
-      planned_hours: plannedHours,
-      actual_hours: actualHours,
-      variance_reason: varianceReason,
-      needs_fitting_1: form.get('needs_fitting_1') === 'on',
-      needs_fitting_2: form.get('needs_fitting_2') === 'on',
-      internal_notes: String(form.get('internal_notes')).trim() || null,
-      updated_by: profile.id,
-    }).eq('id', selected.id)
+    const { error: updateError } = await supabase.rpc('update_order_operations', {
+      p_order_id: selected.id,
+      p_status: String(form.get('status')),
+      p_production_start_date: String(form.get('production_start_date')) || null,
+      p_planned_week_start: String(form.get('planned_week_start')) || null,
+      p_promised_delivery_date: String(form.get('promised_delivery_date')) || null,
+      p_actual_delivery_date: String(form.get('actual_delivery_date')) || null,
+      p_planned_hours: plannedHours,
+      p_actual_hours: actualHours,
+      p_variance_reason: varianceReason,
+      p_needs_fitting_1: form.get('needs_fitting_1') === 'on',
+      p_needs_fitting_2: form.get('needs_fitting_2') === 'on',
+      p_internal_notes: String(form.get('internal_notes')).trim() || null,
+    })
     setLoading(false)
     if (updateError) setError(updateError.message)
     else { await loadData(selected.id); onChanged('Planificación y avance del pedido actualizados.') }

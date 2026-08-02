@@ -1,10 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { formatClp, orderCode, paymentMethodLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
-import type { CashMovement, Order, OrderPayment, PaymentMethod, Profile } from '../types'
+import type { CashMovement, Order, OrderPayment, PaymentMethod } from '../types'
 
 interface Props {
-  profile: Profile
   refreshToken: number
   onChanged: (message: string, kind?: 'success' | 'error' | 'info') => void
 }
@@ -13,7 +12,7 @@ interface PaymentWithOrder extends OrderPayment {
   order?: Pick<Order, 'order_sequence' | 'product_name'> | null
 }
 
-export function Cash({ profile, refreshToken, onChanged }: Props) {
+export function Cash({ refreshToken, onChanged }: Props) {
   const [orders, setOrders] = useState<Order[]>([])
   const [payments, setPayments] = useState<PaymentWithOrder[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
@@ -43,7 +42,7 @@ export function Cash({ profile, refreshToken, onChanged }: Props) {
   const expenses = monthMovements.filter((item) => item.direction === 'expense').reduce((sum, item) => sum + Number(item.amount), 0)
   const cardFees = monthPayments
     .filter((item) => item.method === 'debit_card' || item.method === 'credit_card')
-    .reduce((sum, item) => sum + Math.abs(Number(item.amount)) * Number(item.card_fee_rate_snapshot) / 100, 0)
+    .reduce((sum, item) => sum + Number(item.amount) * Number(item.card_fee_rate_snapshot) / 100, 0)
 
   async function addPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -51,16 +50,14 @@ export function Cash({ profile, refreshToken, onChanged }: Props) {
     const order = orders.find((item) => item.id === String(form.get('order_id')))
     if (!order) return
     setSaving(true)
-    const { error: insertError } = await supabase.from('order_payments').insert({
-      order_id: order.id,
-      amount: Number(form.get('amount')),
-      method: String(form.get('method')) as PaymentMethod,
-      paid_at: new Date(String(form.get('paid_at'))).toISOString(),
-      reference: String(form.get('reference')).trim() || null,
-      document_number: String(form.get('document_number')).trim() || null,
-      card_fee_rate_snapshot: Number(order.financials?.card_fee_rate_snapshot ?? 0),
-      notes: String(form.get('notes')).trim() || null,
-      created_by: profile.id,
+    const { error: insertError } = await supabase.rpc('record_order_payment', {
+      p_order_id: order.id,
+      p_amount: Number(form.get('amount')),
+      p_method: String(form.get('method')) as PaymentMethod,
+      p_paid_at: new Date(String(form.get('paid_at'))).toISOString(),
+      p_reference: String(form.get('reference')).trim() || null,
+      p_document_number: String(form.get('document_number')).trim() || null,
+      p_notes: String(form.get('notes')).trim() || null,
     })
     setSaving(false)
     if (insertError) setError(insertError.message)
@@ -71,16 +68,15 @@ export function Cash({ profile, refreshToken, onChanged }: Props) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     setSaving(true)
-    const { error: insertError } = await supabase.from('cash_movements').insert({
-      order_id: String(form.get('order_id')) || null,
-      direction: String(form.get('direction')),
-      category: String(form.get('category')).trim(),
-      amount: Number(form.get('amount')),
-      method: String(form.get('method')),
-      occurred_at: new Date(String(form.get('occurred_at'))).toISOString(),
-      description: String(form.get('description')).trim(),
-      reference: String(form.get('reference')).trim() || null,
-      created_by: profile.id,
+    const { error: insertError } = await supabase.rpc('record_cash_movement', {
+      p_order_id: String(form.get('order_id')) || null,
+      p_direction: String(form.get('direction')),
+      p_category: String(form.get('category')).trim(),
+      p_amount: Number(form.get('amount')),
+      p_method: String(form.get('method')),
+      p_occurred_at: new Date(String(form.get('occurred_at'))).toISOString(),
+      p_description: String(form.get('description')).trim(),
+      p_reference: String(form.get('reference')).trim() || null,
     })
     setSaving(false)
     if (insertError) setError(insertError.message)

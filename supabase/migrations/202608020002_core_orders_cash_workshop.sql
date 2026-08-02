@@ -118,7 +118,7 @@ create index order_cost_items_order_idx on public.order_cost_items(order_id, pha
 create table public.order_payments (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id),
-  amount numeric(14,2) not null check (amount <> 0),
+  amount numeric(14,2) not null,
   method public.payment_method not null,
   paid_at timestamptz not null default now(),
   reference text,
@@ -130,8 +130,8 @@ create table public.order_payments (
   created_by uuid not null default auth.uid() references public.profiles(id),
   created_at timestamptz not null default now(),
   constraint order_payment_reversal check (
-    (status = 'posted' and reversal_of is null)
-    or (status = 'reversed' and reversal_of is not null)
+    (status = 'posted' and reversal_of is null and amount > 0)
+    or (status = 'reversed' and reversal_of is not null and amount < 0)
   )
 );
 create index order_payments_order_idx on public.order_payments(order_id, paid_at desc);
@@ -289,6 +289,203 @@ begin
 end;
 $$;
 
+create or replace function public.update_order_operations(
+  p_order_id uuid,
+  p_status public.order_status,
+  p_production_start_date date,
+  p_planned_week_start date,
+  p_promised_delivery_date date,
+  p_actual_delivery_date date,
+  p_planned_hours numeric,
+  p_actual_hours numeric,
+  p_variance_reason text,
+  p_needs_fitting_1 boolean,
+  p_needs_fitting_2 boolean,
+  p_internal_notes text
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_order public.orders%rowtype;
+  v_role text := public.current_user_role()::text;
+begin
+  if v_role not in ('admin', 'seller', 'workshop') then
+    raise exception 'Usuario no autorizado para actualizar pedidos';
+  end if;
+
+  select * into v_order
+  from public.orders
+  where id = p_order_id
+  for update;
+
+  if not found then raise exception 'Pedido no encontrado'; end if;
+  if v_order.status = 'closed' then
+    raise exception 'Un pedido cerrado no puede modificarse';
+  end if;
+  if p_planned_week_start is not null and extract(isodow from p_planned_week_start) <> 1 then
+    raise exception 'La semana planificada debe comenzar un lunes';
+  end if;
+  if p_planned_hours is not null and p_planned_hours < 0 then
+    raise exception 'Las horas planificadas no pueden ser negativas';
+  end if;
+  if p_actual_hours is not null and p_actual_hours < 0 then
+    raise exception 'Las horas reales no pueden ser negativas';
+  end if;
+  if p_planned_hours is not null and p_actual_hours is not null
+     and p_planned_hours <> p_actual_hours
+     and nullif(trim(p_variance_reason), '') is null then
+    raise exception 'Debes indicar el motivo de la desviación de horas';
+  end if;
+
+  if v_role = 'workshop' then
+    update public.orders
+       set status = p_status,
+           planned_week_start = p_planned_week_start,
+           planned_hours = p_planned_hours,
+           actual_hours = p_actual_hours,
+           variance_reason = nullif(trim(p_variance_reason), ''),
+           updated_by = auth.uid(),
+           updated_at = now()
+     where id = p_order_id;
+  else
+    update public.orders
+       set status = p_status,
+           production_start_date = p_production_start_date,
+           planned_week_start = p_planned_week_start,
+           promised_delivery_date = p_promised_delivery_date,
+           actual_delivery_date = p_actual_delivery_date,
+           planned_hours = p_planned_hours,
+           actual_hours = p_actual_hours,
+           variance_reason = nullif(trim(p_variance_reason), ''),
+           needs_fitting_1 = p_needs_fitting_1,
+           needs_fitting_2 = p_needs_fitting_2,
+           internal_notes = nullif(trim(p_internal_notes), ''),
+           updated_by = auth.uid(),
+           updated_at = now()
+     where id = p_order_id;
+  end if;
+end;
+$$;
+
+create or replace function public.record_order_payment(
+  p_order_id uuid,
+  p_amount numeric,
+  p_method public.payment_method,
+  p_paid_at timestamptz,
+  p_reference text,
+  p_document_number text,
+  p_notes text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_payment_id uuid;
+  v_card_fee numeric;
+begin
+  if not public.can_manage_commercial() then raise exception 'Usuario no autorizado'; end if;
+  if p_amount is null or p_amount <= 0 then raise exception 'El monto debe ser mayor que cero'; end if;
+  if not exists (
+    select 1 from public.orders
+    where id = p_order_id and status not in ('closed', 'cancelled')
+  ) then
+    raise exception 'Pedido no encontrado, cerrado o cancelado';
+  end if;
+
+  select card_fee_rate_snapshot into v_card_fee
+  from public.order_financials
+  where order_id = p_order_id;
+
+  insert into public.order_payments(
+    order_id, amount, method, paid_at, reference, document_number,
+    card_fee_rate_snapshot, status, reversal_of, notes, created_by
+  ) values (
+    p_order_id, p_amount, p_method, coalesce(p_paid_at, now()),
+    nullif(trim(p_reference), ''), nullif(trim(p_document_number), ''),
+    coalesce(v_card_fee, 0), 'posted', null, nullif(trim(p_notes), ''), auth.uid()
+  ) returning id into v_payment_id;
+
+  return v_payment_id;
+end;
+$$;
+
+create or replace function public.record_cash_movement(
+  p_order_id uuid,
+  p_direction public.cash_direction,
+  p_category text,
+  p_amount numeric,
+  p_method public.payment_method,
+  p_occurred_at timestamptz,
+  p_description text,
+  p_reference text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_movement_id uuid;
+begin
+  if not public.can_manage_commercial() then raise exception 'Usuario no autorizado'; end if;
+  if p_amount is null or p_amount <= 0 then raise exception 'El monto debe ser mayor que cero'; end if;
+  if nullif(trim(p_category), '') is null then raise exception 'La categoría es obligatoria'; end if;
+  if nullif(trim(p_description), '') is null then raise exception 'La descripción es obligatoria'; end if;
+  if p_order_id is not null and not exists (select 1 from public.orders where id = p_order_id) then
+    raise exception 'El pedido relacionado no existe';
+  end if;
+
+  insert into public.cash_movements(
+    order_id, direction, category, amount, method, occurred_at,
+    description, reference, status, reversal_of, created_by
+  ) values (
+    p_order_id, p_direction, trim(p_category), p_amount, p_method,
+    coalesce(p_occurred_at, now()), trim(p_description),
+    nullif(trim(p_reference), ''), 'posted', null, auth.uid()
+  ) returning id into v_movement_id;
+
+  return v_movement_id;
+end;
+$$;
+
+create or replace function public.guard_closed_order_financials()
+returns trigger
+language plpgsql
+security invoker
+set search_path = pg_catalog, public
+as $$
+declare
+  v_order_id uuid;
+begin
+  v_order_id := case when tg_op = 'DELETE' then old.order_id else new.order_id end;
+
+  if tg_op = 'UPDATE' and new.order_id is distinct from old.order_id then
+    raise exception 'No se puede cambiar el pedido de un registro financiero';
+  end if;
+  if exists (select 1 from public.orders where id = v_order_id and status = 'closed') then
+    raise exception 'Los datos financieros de un pedido cerrado son inmutables';
+  end if;
+
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end;
+$$;
+
+create trigger guard_order_financials_closed
+  before insert or update or delete on public.order_financials
+  for each row execute function public.guard_closed_order_financials();
+create trigger guard_order_cost_items_closed
+  before insert or update or delete on public.order_cost_items
+  for each row execute function public.guard_closed_order_financials();
+create trigger guard_order_payments_closed
+  before insert or update or delete on public.order_payments
+  for each row execute function public.guard_closed_order_financials();
+
 create or replace function public.reverse_order_payment(p_payment_id uuid, p_reason text)
 returns uuid
 language plpgsql
@@ -303,7 +500,13 @@ begin
   if nullif(trim(p_reason), '') is null then raise exception 'El motivo es obligatorio'; end if;
 
   select * into v_payment from public.order_payments
-  where id = p_payment_id and status = 'posted' for update;
+  where id = p_payment_id
+    and status = 'posted'
+    and not exists (
+      select 1 from public.order_payments reversal
+      where reversal.reversal_of = p_payment_id
+    )
+  for update;
   if not found then raise exception 'Pago no encontrado o ya reversado'; end if;
 
   insert into public.order_payments(
@@ -358,7 +561,13 @@ begin
   if nullif(trim(p_reason), '') is null then raise exception 'El motivo es obligatorio'; end if;
 
   select * into v_movement from public.cash_movements
-  where id = p_movement_id and status = 'posted' for update;
+  where id = p_movement_id
+    and status = 'posted'
+    and not exists (
+      select 1 from public.cash_movements reversal
+      where reversal.reversal_of = p_movement_id
+    )
+  for update;
   if not found then raise exception 'Movimiento no encontrado o ya reversado'; end if;
 
   insert into public.cash_movements(
@@ -400,11 +609,9 @@ select
   coalesce(o.actual_hours, 0) * f.workshop_hourly_cost_snapshot as actual_labor_cost,
   greatest(f.gross_sale_amount - f.discount_amount, 0) * f.sales_commission_rate_snapshot / 100 as sales_commission,
   coalesce((
-    select sum(abs(p.amount) * p.card_fee_rate_snapshot / 100)
+    select sum(p.amount * p.card_fee_rate_snapshot / 100)
     from public.order_payments p
     where p.order_id = o.id
-      and p.status = 'posted'
-      and p.amount > 0
       and p.method in ('debit_card', 'credit_card')
   ), 0) as card_fees,
   coalesce((select sum(p.amount) from public.order_payments p where p.order_id = o.id), 0) as paid_amount
@@ -464,6 +671,10 @@ create policy workshop_capacity_manage on public.workshop_capacity_exceptions fo
 revoke all on function public.can_manage_commercial() from public, anon, authenticated;
 revoke all on function public.can_manage_workshop() from public, anon, authenticated;
 revoke all on function public.create_order_with_financials(uuid,uuid,public.production_route,text,text,date,date,date,numeric,numeric,text) from public, anon, authenticated;
+revoke all on function public.update_order_operations(uuid,public.order_status,date,date,date,date,numeric,numeric,text,boolean,boolean,text) from public, anon, authenticated;
+revoke all on function public.record_order_payment(uuid,numeric,public.payment_method,timestamptz,text,text,text) from public, anon, authenticated;
+revoke all on function public.record_cash_movement(uuid,public.cash_direction,text,numeric,public.payment_method,timestamptz,text,text) from public, anon, authenticated;
+revoke all on function public.guard_closed_order_financials() from public, anon, authenticated;
 revoke all on function public.reverse_order_payment(uuid,text) from public, anon, authenticated;
 revoke all on function public.link_appointment_to_order(uuid,uuid) from public, anon, authenticated;
 revoke all on function public.reverse_cash_movement(uuid,text) from public, anon, authenticated;
@@ -471,6 +682,9 @@ revoke all on function public.reverse_cash_movement(uuid,text) from public, anon
 grant execute on function public.can_manage_commercial() to authenticated;
 grant execute on function public.can_manage_workshop() to authenticated;
 grant execute on function public.create_order_with_financials(uuid,uuid,public.production_route,text,text,date,date,date,numeric,numeric,text) to authenticated;
+grant execute on function public.update_order_operations(uuid,public.order_status,date,date,date,date,numeric,numeric,text,boolean,boolean,text) to authenticated;
+grant execute on function public.record_order_payment(uuid,numeric,public.payment_method,timestamptz,text,text,text) to authenticated;
+grant execute on function public.record_cash_movement(uuid,public.cash_direction,text,numeric,public.payment_method,timestamptz,text,text) to authenticated;
 grant execute on function public.reverse_order_payment(uuid,text) to authenticated;
 grant execute on function public.link_appointment_to_order(uuid,uuid) to authenticated;
 grant execute on function public.reverse_cash_movement(uuid,text) to authenticated;
@@ -484,7 +698,9 @@ revoke all on sequence public.orders_order_sequence_seq from anon;
 grant select on public.orders, public.order_financials, public.order_cost_items,
   public.order_payments, public.cash_movements, public.workshop_capacity_exceptions,
   public.order_financial_summary to authenticated;
-grant insert, update on public.orders, public.order_financials to authenticated;
+grant update (
+  gross_sale_amount, discount_amount, tax_rate_snapshot,
+  sales_commission_rate_snapshot, card_fee_rate_snapshot,
+  workshop_hourly_cost_snapshot, updated_by
+) on public.order_financials to authenticated;
 grant insert, update, delete on public.order_cost_items, public.workshop_capacity_exceptions to authenticated;
-grant insert on public.order_payments, public.cash_movements to authenticated;
-grant usage, select on sequence public.orders_order_sequence_seq to authenticated;

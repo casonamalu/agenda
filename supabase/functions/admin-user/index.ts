@@ -36,7 +36,7 @@ Deno.serve(async (request) => {
       const email = String(body.email ?? '').trim().toLowerCase()
       const password = String(body.password ?? '')
       const role = String(body.role ?? 'reception')
-      if (!fullName || !email.includes('@') || password.length < 8 || !['admin', 'seller', 'reception'].includes(role)) {
+      if (!fullName || !email.includes('@') || password.length < 8 || !['admin', 'seller', 'reception', 'workshop'].includes(role)) {
         return json({ error: 'Datos de usuario inválidos' }, 400)
       }
       const { data, error } = await adminClient.auth.admin.createUser({

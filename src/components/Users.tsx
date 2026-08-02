@@ -57,7 +57,7 @@ export function Users({ refreshToken, onChanged }: { refreshToken: number; onCha
         <div className="form-grid four-columns">
           <label>Nombre completo<input name="full_name" required /></label>
           <label>Correo<input name="email" type="email" required /></label>
-          <label>Rol<select name="role"><option value="seller">Vendedora</option><option value="reception">Recepción</option><option value="admin">Administrador</option></select></label>
+          <label>Rol<select name="role"><option value="seller">Vendedora</option><option value="reception">Recepción</option><option value="workshop">Taller</option><option value="admin">Administrador</option></select></label>
           <label>Contraseña temporal<input name="password" type="password" minLength={8} required /></label>
         </div>
         <button className="btn btn-primary" type="submit" disabled={loading}>{loading ? 'Creando…' : 'Crear usuario'}</button>

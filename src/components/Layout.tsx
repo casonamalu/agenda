@@ -3,7 +3,7 @@ import { roleLabel } from '../lib/date'
 import { supabase } from '../lib/supabase'
 import type { Profile } from '../types'
 
-export type PageKey = 'agenda' | 'dashboard' | 'clients' | 'reports' | 'settings' | 'users' | 'audit' | 'emails'
+export type PageKey = 'agenda' | 'dashboard' | 'clients' | 'orders' | 'cash' | 'workshop' | 'profitability' | 'reports' | 'settings' | 'users' | 'audit' | 'emails'
 
 interface LayoutProps {
   children: ReactNode
@@ -13,10 +13,14 @@ interface LayoutProps {
   onNewAppointment: () => void
 }
 
-const navItems: Array<{ key: PageKey; label: string; icon: string; adminOnly?: boolean }> = [
+const navItems: Array<{ key: PageKey; label: string; icon: string; adminOnly?: boolean; commercialOnly?: boolean }> = [
   { key: 'agenda', label: 'Agenda', icon: '▦' },
   { key: 'dashboard', label: 'Indicadores', icon: '◫' },
   { key: 'clients', label: 'Clientes', icon: '♙' },
+  { key: 'orders', label: 'Pedidos', icon: '◇' },
+  { key: 'cash', label: 'Caja', icon: '$', commercialOnly: true },
+  { key: 'workshop', label: 'Taller', icon: '⌁' },
+  { key: 'profitability', label: 'Rentabilidad', icon: '%', commercialOnly: true },
   { key: 'reports', label: 'Reportes', icon: '▤', adminOnly: true },
 ]
 
@@ -47,7 +51,8 @@ export function Layout({ children, profile, page, setPage, onNewAppointment }: L
         </div>
         <nav className="nav-list" aria-label="Navegación principal">
           {navItems
-            .filter((item) => !item.adminOnly || profile.role === 'admin')
+            .filter((item) => (!item.adminOnly || profile.role === 'admin')
+              && (!item.commercialOnly || profile.role === 'admin' || profile.role === 'seller'))
             .map((item) => (
               <button
                 type="button"
@@ -101,8 +106,8 @@ export function Layout({ children, profile, page, setPage, onNewAppointment }: L
       <section className="main-area">
         <header className="topbar">
           <div>
-            <strong>Agenda Casona Malú</strong>
-            <span>Zona horaria: Chile</span>
+            <strong>Sistema Casona Malú</strong>
+            <span>Agenda · Pedidos · Caja · Taller</span>
           </div>
           <button className="btn btn-primary" type="button" onClick={onNewAppointment}>
             + Nueva cita

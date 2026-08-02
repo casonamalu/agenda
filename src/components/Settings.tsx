@@ -37,12 +37,21 @@ interface CapacitySettings {
   business_break_end: string
 }
 
+interface OperationsSettings {
+  workshop_default_weekly_hours: string
+  workshop_hourly_cost: string
+  workshop_capacity_warning_percent: string
+  default_tax_rate: string
+  default_sales_commission_rate: string
+  default_card_fee_rate: string
+}
+
 interface Props {
   refreshToken: number
   onChanged: (message: string) => void
 }
 
-type Tab = 'appointment-types' | 'capacity' | 'client-types' | 'slots' | 'closures' | 'notifications' | 'templates'
+type Tab = 'appointment-types' | 'capacity' | 'operations' | 'client-types' | 'slots' | 'closures' | 'notifications' | 'templates'
 
 const weekdayLabels: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' }
 const initialNotificationSettings: NotificationSettings = {
@@ -69,11 +78,19 @@ const initialCapacitySettings: CapacitySettings = {
   business_break_start: '14:00',
   business_break_end: '15:00',
 }
+const initialOperationsSettings: OperationsSettings = {
+  workshop_default_weekly_hours: '40',
+  workshop_hourly_cost: '0',
+  workshop_capacity_warning_percent: '85',
+  default_tax_rate: '19',
+  default_sales_commission_rate: '0',
+  default_card_fee_rate: '0',
+}
 
 export function Settings({ refreshToken, onChanged }: Props) {
   const [tab, setTab] = useState<Tab>(() => {
     const saved = window.localStorage.getItem('casona-malu-settings-tab')
-    const tabs: Tab[] = ['appointment-types', 'capacity', 'client-types', 'slots', 'closures', 'notifications', 'templates']
+    const tabs: Tab[] = ['appointment-types', 'capacity', 'operations', 'client-types', 'slots', 'closures', 'notifications', 'templates']
     return tabs.includes(saved as Tab) ? saved as Tab : 'appointment-types'
   })
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
@@ -82,8 +99,10 @@ export function Settings({ refreshToken, onChanged }: Props) {
   const [closures, setClosures] = useState<Closure[]>([])
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [capacitySettings, setCapacitySettings] = useState<CapacitySettings>(initialCapacitySettings)
+  const [operationsSettings, setOperationsSettings] = useState<OperationsSettings>(initialOperationsSettings)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(initialNotificationSettings)
   const [savingCapacity, setSavingCapacity] = useState(false)
+  const [savingOperations, setSavingOperations] = useState(false)
   const [savingNotifications, setSavingNotifications] = useState(false)
   const [savingClosure, setSavingClosure] = useState(false)
   const [error, setError] = useState('')
@@ -131,6 +150,14 @@ export function Settings({ refreshToken, onChanged }: Props) {
       notification_batch_size: String(settingsMap.notification_batch_size ?? 20),
       notification_processing_timeout_minutes: String(settingsMap.notification_processing_timeout_minutes ?? 15),
       notification_admin_alerts: typeof settingsMap.notification_admin_alerts === 'boolean' ? settingsMap.notification_admin_alerts : true,
+    })
+    setOperationsSettings({
+      workshop_default_weekly_hours: String(settingsMap.workshop_default_weekly_hours ?? 40),
+      workshop_hourly_cost: String(settingsMap.workshop_hourly_cost ?? 0),
+      workshop_capacity_warning_percent: String(settingsMap.workshop_capacity_warning_percent ?? 85),
+      default_tax_rate: String(settingsMap.default_tax_rate ?? 19),
+      default_sales_commission_rate: String(settingsMap.default_sales_commission_rate ?? 0),
+      default_card_fee_rate: String(settingsMap.default_card_fee_rate ?? 0),
     })
   }
 
@@ -256,6 +283,38 @@ export function Settings({ refreshToken, onChanged }: Props) {
     setCapacitySettings((current) => ({ ...current, [key]: value }))
   }
 
+  function updateOperationsSetting<Key extends keyof OperationsSettings>(key: Key, value: OperationsSettings[Key]) {
+    setOperationsSettings((current) => ({ ...current, [key]: value }))
+  }
+
+  async function saveOperationsSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    const weeklyHours = Number(operationsSettings.workshop_default_weekly_hours)
+    const hourlyCost = Number(operationsSettings.workshop_hourly_cost)
+    const warning = Number(operationsSettings.workshop_capacity_warning_percent)
+    const tax = Number(operationsSettings.default_tax_rate)
+    const salesCommission = Number(operationsSettings.default_sales_commission_rate)
+    const cardFee = Number(operationsSettings.default_card_fee_rate)
+    if ([weeklyHours, hourlyCost, warning, tax, salesCommission, cardFee].some((value) => !Number.isFinite(value) || value < 0)
+      || warning > 100 || tax > 100 || salesCommission > 100 || cardFee > 100) {
+      setError('Revisa las horas, costos y porcentajes configurados.')
+      return
+    }
+    setSavingOperations(true)
+    const { error: saveError } = await supabase.from('app_settings').upsert([
+      { setting_key: 'workshop_default_weekly_hours', setting_value: weeklyHours, description: 'Horas productivas disponibles por semana en el taller' },
+      { setting_key: 'workshop_hourly_cost', setting_value: hourlyCost, description: 'Costo interno por hora de taller en CLP' },
+      { setting_key: 'workshop_capacity_warning_percent', setting_value: warning, description: 'Porcentaje semanal que activa advertencia de capacidad' },
+      { setting_key: 'default_tax_rate', setting_value: tax, description: 'IVA predeterminado para nuevos pedidos' },
+      { setting_key: 'default_sales_commission_rate', setting_value: salesCommission, description: 'Comisión de venta predeterminada para nuevos pedidos' },
+      { setting_key: 'default_card_fee_rate', setting_value: cardFee, description: 'Comisión Transbank predeterminada para nuevos pedidos' },
+    ], { onConflict: 'setting_key' })
+    setSavingOperations(false)
+    if (saveError) setError(saveError.message)
+    else { await loadAll(); onChanged('Configuración comercial y de taller actualizada.') }
+  }
+
   async function saveCapacitySettings(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
@@ -360,6 +419,7 @@ export function Settings({ refreshToken, onChanged }: Props) {
       <div className="tabs">
         <button className={tab === 'appointment-types' ? 'active' : ''} onClick={() => setTab('appointment-types')}>Tipos de cita</button>
         <button className={tab === 'capacity' ? 'active' : ''} onClick={() => setTab('capacity')}>Capacidad diaria</button>
+        <button className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}>Comercial y taller</button>
         <button className={tab === 'client-types' ? 'active' : ''} onClick={() => setTab('client-types')}>Tipos de cliente</button>
         <button className={tab === 'slots' ? 'active' : ''} onClick={() => setTab('slots')}>Bloques</button>
         <button className={tab === 'closures' ? 'active' : ''} onClick={() => setTab('closures')}>Feriados y cierres</button>
@@ -450,6 +510,30 @@ export function Settings({ refreshToken, onChanged }: Props) {
             <button className="btn btn-primary" disabled={savingCapacity} type="submit">
               {savingCapacity ? 'Guardando…' : 'Guardar capacidad'}
             </button>
+          </article>
+        </form>
+      )}
+
+      {tab === 'operations' && (
+        <form className="settings-list" onSubmit={saveOperationsSettings}>
+          <article className="settings-card">
+            <h2>Capacidad y costo del taller</h2>
+            <p>Define la disponibilidad normal. En Taller podrás reemplazarla para una semana específica por vacaciones, feriados o refuerzos.</p>
+            <div className="form-grid three-columns">
+              <label>Horas disponibles por semana<input required type="number" min="0" step="0.25" value={operationsSettings.workshop_default_weekly_hours} onChange={(event) => updateOperationsSetting('workshop_default_weekly_hours', event.target.value)} /></label>
+              <label>Costo por hora de taller (CLP)<input required type="number" min="0" step="1" value={operationsSettings.workshop_hourly_cost} onChange={(event) => updateOperationsSetting('workshop_hourly_cost', event.target.value)} /></label>
+              <label>Advertencia de ocupación (%)<input required type="number" min="0" max="100" step="1" value={operationsSettings.workshop_capacity_warning_percent} onChange={(event) => updateOperationsSetting('workshop_capacity_warning_percent', event.target.value)} /></label>
+            </div>
+          </article>
+          <article className="settings-card">
+            <h2>Valores comerciales predeterminados</h2>
+            <p>Se copian al crear cada pedido. El pedido conserva su propia tasa histórica aunque posteriormente cambies estos valores.</p>
+            <div className="form-grid three-columns">
+              <label>IVA (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_tax_rate} onChange={(event) => updateOperationsSetting('default_tax_rate', event.target.value)} /></label>
+              <label>Comisión de venta (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_sales_commission_rate} onChange={(event) => updateOperationsSetting('default_sales_commission_rate', event.target.value)} /></label>
+              <label>Comisión Transbank (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_card_fee_rate} onChange={(event) => updateOperationsSetting('default_card_fee_rate', event.target.value)} /></label>
+            </div>
+            <button className="btn btn-primary" disabled={savingOperations}>{savingOperations ? 'Guardando…' : 'Guardar configuración'}</button>
           </article>
         </form>
       )}

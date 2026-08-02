@@ -4,21 +4,26 @@ import { Agenda } from './components/Agenda'
 import { AppointmentModal } from './components/AppointmentModal'
 import { Audit } from './components/Audit'
 import { Clients } from './components/Clients'
+import { Cash } from './components/Cash'
 import { Dashboard } from './components/Dashboard'
 import { EmailQueue } from './components/EmailQueue'
 import { Layout, type PageKey } from './components/Layout'
 import { Login } from './components/Login'
+import { Orders } from './components/Orders'
+import { Profitability } from './components/Profitability'
 import { Reports } from './components/Reports'
 import { Settings } from './components/Settings'
 import { Toast } from './components/Toast'
 import { Users } from './components/Users'
+import { Workshop } from './components/Workshop'
 import { toIsoDate } from './lib/date'
 import { supabase } from './lib/supabase'
 import type { Appointment, Profile } from './types'
 
 const PAGE_STORAGE_KEY = 'casona-malu-active-page'
-const VALID_PAGES: PageKey[] = ['agenda', 'dashboard', 'clients', 'reports', 'settings', 'users', 'emails', 'audit']
+const VALID_PAGES: PageKey[] = ['agenda', 'dashboard', 'clients', 'orders', 'cash', 'workshop', 'profitability', 'reports', 'settings', 'users', 'emails', 'audit']
 const ADMIN_PAGES: PageKey[] = ['reports', 'settings', 'users', 'emails', 'audit']
+const COMMERCIAL_PAGES: PageKey[] = ['cash', 'profitability']
 
 function initialPage(): PageKey {
   const stored = window.localStorage.getItem(PAGE_STORAGE_KEY) as PageKey | null
@@ -57,6 +62,7 @@ export default function App() {
 
   useEffect(() => {
     if (profile && profile.role !== 'admin' && ADMIN_PAGES.includes(page)) setPage('agenda')
+    if (profile && !['admin', 'seller'].includes(profile.role) && COMMERCIAL_PAGES.includes(page)) setPage('agenda')
   }, [page, profile])
 
   async function loadProfile(userId: string) {
@@ -112,6 +118,10 @@ export default function App() {
         {page === 'agenda' && <Agenda refreshToken={refreshToken} onOpenAppointment={openAppointment} onDateForNewAppointment={openNewAppointment} />}
         {page === 'dashboard' && <Dashboard refreshToken={refreshToken} />}
         {page === 'clients' && <Clients profile={profile} refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'orders' && <Orders profile={profile} refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'cash' && ['admin', 'seller'].includes(profile.role) && <Cash refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'workshop' && <Workshop profile={profile} refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'profitability' && ['admin', 'seller'].includes(profile.role) && <Profitability refreshToken={refreshToken} />}
         {page === 'reports' && profile.role === 'admin' && <Reports profile={profile} refreshToken={refreshToken} onChanged={notify} />}
         {page === 'settings' && profile.role === 'admin' && <Settings refreshToken={refreshToken} onChanged={notify} />}
         {page === 'users' && profile.role === 'admin' && <Users refreshToken={refreshToken} onChanged={notify} />}

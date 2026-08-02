@@ -1,8 +1,13 @@
-export type AppRole = 'admin' | 'seller' | 'reception'
+export type AppRole = 'admin' | 'seller' | 'reception' | 'workshop'
 export type AppointmentStatus = 'scheduled' | 'rescheduled' | 'cancelled' | 'no_show'
 export type AppointmentCategory = 'sale' | 'trial' | 'delivery'
 export type CalendarView = 'day' | 'week' | 'month'
 export type CommercialOutcome = 'completed_sale' | 'rejected_sale' | 'potential_sale'
+export type ProductionRoute = 'stock_adjustments' | 'existing_design' | 'new_design'
+export type OrderStatus = 'quote' | 'confirmed' | 'pending_planning' | 'planned' | 'in_production' | 'pending_fitting_1' | 'corrections' | 'pending_fitting_2' | 'finishing' | 'ready' | 'delivered' | 'closed' | 'on_hold' | 'cancelled'
+export type CostPhase = 'estimated' | 'actual'
+export type CostCategory = 'fabric' | 'lining' | 'accessories' | 'external_service' | 'other'
+export type PaymentMethod = 'cash' | 'transfer' | 'debit_card' | 'credit_card' | 'other'
 
 export interface Profile {
   id: string
@@ -87,12 +92,105 @@ export interface Appointment {
   commercial_outcome: CommercialOutcome | null
   commercial_outcome_at: string | null
   commercial_outcome_by: string | null
+  order_id: string | null
   created_by: string
   updated_by: string
   created_at: string
   updated_at: string
   client?: Client
   appointment_type?: AppointmentType
+}
+
+export interface OrderFinancials {
+  id: string
+  order_id: string
+  gross_sale_amount: number
+  discount_amount: number
+  tax_rate_snapshot: number
+  sales_commission_rate_snapshot: number
+  card_fee_rate_snapshot: number
+  workshop_hourly_cost_snapshot: number
+}
+
+export interface OrderCostItem {
+  id: string
+  order_id: string
+  phase: CostPhase
+  category: CostCategory
+  description: string
+  quantity: number
+  unit: string
+  unit_cost: number
+  total_cost: number
+  created_at: string
+}
+
+export interface OrderPayment {
+  id: string
+  order_id: string
+  amount: number
+  method: PaymentMethod
+  paid_at: string
+  reference: string | null
+  document_number: string | null
+  card_fee_rate_snapshot: number
+  status: 'posted' | 'reversed'
+  reversal_of: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface Order {
+  id: string
+  order_sequence: number
+  client_id: string
+  source_appointment_id: string | null
+  seller_id: string | null
+  production_route: ProductionRoute
+  status: OrderStatus
+  product_name: string
+  design_description: string | null
+  sale_date: string | null
+  event_date: string | null
+  promised_delivery_date: string | null
+  production_start_date: string | null
+  planned_week_start: string | null
+  actual_delivery_date: string | null
+  planned_hours: number | null
+  actual_hours: number | null
+  variance_reason: string | null
+  needs_fitting_1: boolean
+  needs_fitting_2: boolean
+  internal_notes: string | null
+  created_at: string
+  updated_at: string
+  client?: Client
+  financials?: OrderFinancials | null
+  cost_items?: OrderCostItem[]
+  payments?: OrderPayment[]
+}
+
+export interface CashMovement {
+  id: string
+  order_id: string | null
+  direction: 'income' | 'expense'
+  category: string
+  amount: number
+  method: PaymentMethod
+  occurred_at: string
+  description: string
+  reference: string | null
+  status: 'posted' | 'reversed'
+  reversal_of: string | null
+  created_at: string
+  order?: Pick<Order, 'order_sequence' | 'product_name'> | null
+}
+
+export interface WorkshopCapacityException {
+  id: string
+  week_start: string
+  available_hours: number
+  reason: string | null
 }
 
 export interface AuditLog {

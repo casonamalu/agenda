@@ -46,7 +46,7 @@ Deno.serve(async (request) => {
       if (
         fullName.length < 2 || fullName.length > 120 ||
         !isValidEmail(email) || !isStrongPassword(password) ||
-        !['admin', 'seller', 'reception'].includes(role)
+        !['admin', 'seller', 'reception', 'workshop'].includes(role)
       ) {
         return json(request, { error: 'Datos de usuario inválidos. La contraseña debe tener 12 caracteres, mayúscula, minúscula y número.' }, 400)
       }

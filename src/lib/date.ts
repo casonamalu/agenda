@@ -109,6 +109,7 @@ export function roleLabel(role: string): string {
     admin: 'Administrador',
     seller: 'Vendedora',
     reception: 'Recepción',
+    workshop: 'Taller',
   }
   return labels[role] ?? role
 }

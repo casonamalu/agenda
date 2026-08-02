@@ -141,8 +141,8 @@ function ChangePassword({ profile, onCompleted }: { profile: Profile; onComplete
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
-    if (password.length < 8) {
-      setError('La contraseña debe tener al menos 8 caracteres.')
+    if (password.length < 12 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
+      setError('La contraseña debe tener 12 caracteres, mayúscula, minúscula y número.')
       return
     }
     if (password !== confirm) {
@@ -167,8 +167,8 @@ function ChangePassword({ profile, onCompleted }: { profile: Profile; onComplete
       <section className="modal-card">
         <header className="modal-header"><div><h2>Cambiar contraseña</h2><p>Debes reemplazar la clave temporal antes de continuar.</p></div></header>
         <form className="modal-body" onSubmit={submit}>
-          <label>Nueva contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>
-          <label>Repetir contraseña<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={8} required /></label>
+          <label>Nueva contraseña<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} required /></label>
+          <label>Repetir contraseña<input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={12} required /></label>
           {error && <div className="alert alert-danger">{error}</div>}
           <button type="submit" className="btn btn-primary btn-block" disabled={loading}>{loading ? 'Actualizando…' : 'Guardar contraseña'}</button>
         </form>

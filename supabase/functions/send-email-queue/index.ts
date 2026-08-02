@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
 
 interface QueueItem {
   id: string
@@ -25,7 +25,7 @@ Deno.serve(async (request) => {
     if (request.method !== 'POST') return json({ error: 'Método no permitido' }, 405)
 
     const expectedSecret = Deno.env.get('CRON_SECRET')
-    if (!expectedSecret || request.headers.get('x-cron-secret') !== expectedSecret) {
+    if (!expectedSecret || !secureEqual(request.headers.get('x-cron-secret') ?? '', expectedSecret)) {
       return json({ error: 'No autorizado' }, 401)
     }
 
@@ -189,8 +189,8 @@ async function buildEmail(
     correo_contacto: stringSetting(settingsMap, 'contact_email', ''),
   }
   return {
-    subject: render(template.subject, variables),
-    html: render(template.body_html, variables),
+    subject: renderSubject(template.subject, variables),
+    html: renderHtml(template.body_html, variables),
     replyTo: stringSetting(settingsMap, 'contact_email', ''),
   }
 }
@@ -297,6 +297,27 @@ async function buildReportEmail(
 
 function render(value: string, variables: Record<string, string>) {
   return value.replace(/{{\s*([a-z_]+)\s*}}/gi, (_match, key) => variables[key] ?? '')
+}
+
+function renderHtml(value: string, variables: Record<string, string>) {
+  return render(value, Object.fromEntries(
+    Object.entries(variables).map(([key, variable]) => [key, escapeHtml(variable)]),
+  ))
+}
+
+function renderSubject(value: string, variables: Record<string, string>) {
+  return render(value, variables).replace(/[\r\n\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200)
+}
+
+function secureEqual(left: string, right: string) {
+  const leftBytes = new TextEncoder().encode(left)
+  const rightBytes = new TextEncoder().encode(right)
+  if (leftBytes.length !== rightBytes.length) return false
+  let difference = 0
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index]
+  }
+  return difference === 0
 }
 
 async function notifyAdmins(

@@ -36,6 +36,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [showNew, setShowNew] = useState(false)
+  const [wizardAppointmentId, setWizardAppointmentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -61,12 +62,28 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
     if (source?.order_id) {
       setSelectedId(source.order_id)
       setShowNew(false)
-    } else {
+      setWizardAppointmentId(null)
+    } else if (source) {
+      setWizardAppointmentId(source.id)
       setShowNew(true)
       setSelectedId(null)
+    } else {
+      setError('No fue posible recuperar la cita de venta seleccionada.')
     }
     onLaunchHandled()
   }, [appointments, initialAppointmentId, onLaunchHandled])
+
+  function toggleNewOrder() {
+    setError('')
+    if (showNew) {
+      setShowNew(false)
+      setWizardAppointmentId(null)
+      return
+    }
+    setWizardAppointmentId(null)
+    setShowNew(true)
+    setSelectedId(null)
+  }
 
   async function loadData(selectId?: string) {
     setError('')
@@ -190,7 +207,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
     <section className="page-section">
       <div className="page-heading">
         <div><h1>Pedidos</h1><p>Seguimiento comercial, costos y trazabilidad desde la venta hasta la entrega.</p></div>
-        {commercialAccess && <button className="btn btn-primary" type="button" onClick={() => setShowNew((open) => !open)}>{showNew ? 'Cerrar' : '+ Nuevo pedido'}</button>}
+        {commercialAccess && <button className="btn btn-primary" type="button" onClick={toggleNewOrder}>{showNew ? 'Cerrar' : '+ Nuevo pedido'}</button>}
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
 
@@ -203,10 +220,10 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
           sellers={sellers}
           productTypes={productTypes}
           commissions={commissions}
-          initialAppointmentId={initialAppointmentId}
-          onCancel={() => setShowNew(false)}
+          initialAppointmentId={wizardAppointmentId}
+          onCancel={() => { setShowNew(false); setWizardAppointmentId(null) }}
           onError={setError}
-          onCreated={async (orderId, message) => { setShowNew(false); await loadData(orderId); onChanged(message) }}
+          onCreated={async (orderId, message) => { setShowNew(false); setWizardAppointmentId(null); await loadData(orderId); onChanged(message) }}
         />
       )}
 

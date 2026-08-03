@@ -2,11 +2,14 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { formatDate, toIsoDate } from '../lib/date'
 import { costCategoryLabels, formatClp, orderCode, orderStatusLabels, orderStatuses, productionRouteLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
-import type { Appointment, Client, CostCategory, CostPhase, Order, OrderFinancials, Profile, ProductionRoute } from '../types'
+import type { Appointment, AppointmentType, Client, CommercialProductType, CostCategory, CostPhase, Order, OrderFinancials, Profile, SellerProductCommission } from '../types'
+import { OrderWizard } from './OrderWizard'
 
 interface Props {
   profile: Profile
   refreshToken: number
+  initialAppointmentId: string | null
+  onLaunchHandled: () => void
   onChanged: (message: string, kind?: 'success' | 'error' | 'info') => void
 }
 
@@ -16,14 +19,20 @@ const orderSelect = `
   financials:order_financials(*),
   cost_items:order_cost_items(*),
   payments:order_payments(*)
+  ,seller:profiles!orders_seller_id_fkey(id,full_name,email,role,active,must_change_password)
+  ,product_type:commercial_product_types(*)
 `
 
-export function Orders({ profile, refreshToken, onChanged }: Props) {
+export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHandled, onChanged }: Props) {
   const commercialAccess = profile.role === 'admin' || profile.role === 'seller'
   const costAccess = commercialAccess || profile.role === 'workshop'
   const [orders, setOrders] = useState<Order[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
+  const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
+  const [sellers, setSellers] = useState<Profile[]>([])
+  const [productTypes, setProductTypes] = useState<CommercialProductType[]>([])
+  const [commissions, setCommissions] = useState<SellerProductCommission[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [showNew, setShowNew] = useState(false)
@@ -46,49 +55,40 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
 
   useEffect(() => { void loadData() }, [refreshToken])
 
+  useEffect(() => {
+    if (!initialAppointmentId || !appointments.length) return
+    const source = appointments.find((item) => item.id === initialAppointmentId)
+    if (source?.order_id) {
+      setSelectedId(source.order_id)
+      setShowNew(false)
+    } else {
+      setShowNew(true)
+      setSelectedId(null)
+    }
+    onLaunchHandled()
+  }, [appointments, initialAppointmentId, onLaunchHandled])
+
   async function loadData(selectId?: string) {
     setError('')
-    const [ordersResult, clientsResult, appointmentsResult] = await Promise.all([
+    const [ordersResult, clientsResult, appointmentsResult, appointmentTypesResult, sellersResult, productTypesResult, commissionsResult] = await Promise.all([
       supabase.from('orders').select(orderSelect).order('created_at', { ascending: false }),
       supabase.from('clients').select('*, client_type:client_types(*)').eq('active', true).order('last_name'),
       supabase.from('appointments').select('*, appointment_type:appointment_types(*), client:clients(*)').neq('status', 'cancelled').order('appointment_date', { ascending: false }).limit(300),
+      supabase.from('appointment_types').select('*').eq('active', true).order('sort_order'),
+      supabase.from('profiles').select('*').eq('active', true).in('role', ['admin', 'seller']).order('full_name'),
+      supabase.from('commercial_product_types').select('*').eq('active', true).order('display_order'),
+      supabase.from('seller_product_commissions').select('*'),
     ])
     if (ordersResult.error) setError(ordersResult.error.message)
     if (clientsResult.error) setError(clientsResult.error.message)
     setOrders((ordersResult.data ?? []) as unknown as Order[])
     setClients((clientsResult.data ?? []) as Client[])
     setAppointments((appointmentsResult.data ?? []) as unknown as Appointment[])
+    setAppointmentTypes((appointmentTypesResult.data ?? []) as AppointmentType[])
+    setSellers((sellersResult.data ?? []) as Profile[])
+    setProductTypes((productTypesResult.data ?? []) as CommercialProductType[])
+    setCommissions((commissionsResult.data ?? []) as SellerProductCommission[])
     if (selectId) setSelectedId(selectId)
-  }
-
-  async function createOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setLoading(true)
-    setError('')
-    const form = new FormData(event.currentTarget)
-    const appointmentId = String(form.get('source_appointment_id') ?? '') || null
-    const { data, error: createError } = await supabase.rpc('create_order_with_financials', {
-      p_client_id: String(form.get('client_id')),
-      p_source_appointment_id: appointmentId,
-      p_production_route: String(form.get('production_route')) as ProductionRoute,
-      p_product_name: String(form.get('product_name')).trim(),
-      p_design_description: String(form.get('design_description')).trim() || null,
-      p_sale_date: String(form.get('sale_date')) || null,
-      p_event_date: String(form.get('event_date')) || null,
-      p_promised_delivery_date: String(form.get('promised_delivery_date')) || null,
-      p_gross_sale_amount: Number(form.get('gross_sale_amount') || 0),
-      p_discount_amount: Number(form.get('discount_amount') || 0),
-      p_internal_notes: String(form.get('internal_notes')).trim() || null,
-    })
-    setLoading(false)
-    if (createError) {
-      setError(createError.message)
-      return
-    }
-    event.currentTarget.reset()
-    setShowNew(false)
-    await loadData(data as string)
-    onChanged('Pedido creado y enviado a planificación de taller.')
   }
 
   async function saveOperations(event: FormEvent<HTMLFormElement>) {
@@ -129,9 +129,6 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
     const payload: Partial<OrderFinancials> = {
       gross_sale_amount: Number(form.get('gross_sale_amount') || 0),
       discount_amount: Number(form.get('discount_amount') || 0),
-      tax_rate_snapshot: Number(form.get('tax_rate_snapshot') || 0),
-      sales_commission_rate_snapshot: Number(form.get('sales_commission_rate_snapshot') || 0),
-      card_fee_rate_snapshot: Number(form.get('card_fee_rate_snapshot') || 0),
       workshop_hourly_cost_snapshot: Number(form.get('workshop_hourly_cost_snapshot') || 0),
     }
     setLoading(true)
@@ -173,6 +170,15 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
     else { await loadData(selected.id); onChanged('Cita vinculada al pedido.') }
   }
 
+  async function changeCommissionStatus(status: 'approved' | 'paid') {
+    if (!selected || profile.role !== 'admin') return
+    const label = status === 'approved' ? 'aprobar' : 'marcar como pagada'
+    if (!window.confirm(`¿Deseas ${label} la comisión de este pedido?`)) return
+    const { error: statusError } = await supabase.rpc('set_order_commission_status', { p_order_id: selected.id, p_status: status })
+    if (statusError) setError(statusError.message)
+    else { await loadData(selected.id); onChanged(status === 'approved' ? 'Comisión aprobada y cálculo congelado.' : 'Comisión marcada como pagada.') }
+  }
+
   const linkedAppointments = selected ? appointments.filter((item) => item.order_id === selected.id) : []
   const linkableAppointments = selected ? appointments.filter((item) => item.client_id === selected.client_id && !item.order_id) : []
   const estimatedCosts = sumCosts(selected, 'estimated')
@@ -189,23 +195,19 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
       {error && <div className="alert alert-danger">{error}</div>}
 
       {showNew && commercialAccess && (
-        <form className="panel form-stack" onSubmit={createOrder}>
-          <h2>Registrar pedido</h2>
-          <div className="form-grid three-columns">
-            <label>Cliente<select name="client_id" required defaultValue=""><option value="" disabled>Seleccionar…</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.first_name} {client.last_name}</option>)}</select></label>
-            <label>Ruta de producción<select name="production_route" required defaultValue="stock_adjustments">{Object.entries(productionRouteLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label>Producto / vestido<input name="product_name" required placeholder="Ej.: Vestido modelo Aurora" /></label>
-            <label>Fecha de venta<input name="sale_date" type="date" defaultValue={toIsoDate(new Date())} /></label>
-            <label>Fecha del evento<input name="event_date" type="date" /></label>
-            <label>Entrega comprometida<input name="promised_delivery_date" type="date" /></label>
-            <label>Valor venta (IVA incluido)<input name="gross_sale_amount" type="number" min="0" step="1" defaultValue="0" /></label>
-            <label>Descuento<input name="discount_amount" type="number" min="0" step="1" defaultValue="0" /></label>
-            <label>Cita que originó la venta<select name="source_appointment_id" defaultValue=""><option value="">Sin vincular</option>{appointments.filter((item) => item.appointment_type?.category === 'sale' && !item.order_id).map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.client?.first_name} {item.client?.last_name}</option>)}</select></label>
-          </div>
-          <label>Descripción del diseño<textarea name="design_description" rows={2} /></label>
-          <label>Observaciones internas<textarea name="internal_notes" rows={2} /></label>
-          <button className="btn btn-primary" disabled={loading}>{loading ? 'Guardando…' : 'Crear pedido'}</button>
-        </form>
+        <OrderWizard
+          profile={profile}
+          clients={clients}
+          appointments={appointments}
+          appointmentTypes={appointmentTypes}
+          sellers={sellers}
+          productTypes={productTypes}
+          commissions={commissions}
+          initialAppointmentId={initialAppointmentId}
+          onCancel={() => setShowNew(false)}
+          onError={setError}
+          onCreated={async (orderId, message) => { setShowNew(false); await loadData(orderId); onChanged(message) }}
+        />
       )}
 
       <div className="split-workspace">
@@ -227,7 +229,7 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
           {selected && (
             <>
               <div className="panel">
-                <div className="detail-heading"><div><h2>{orderCode(selected.order_sequence)} · {selected.product_name}</h2><p>{selected.client?.first_name} {selected.client?.last_name} · {productionRouteLabels[selected.production_route]}</p></div><span className="badge badge-info">{orderStatusLabels[selected.status]}</span></div>
+                <div className="detail-heading"><div><h2>{orderCode(selected.order_sequence)} · {selected.product_name}</h2><p>{selected.client?.first_name} {selected.client?.last_name} · {selected.product_type?.name ?? 'Sin tipo'} · {productionRouteLabels[selected.production_route]}</p><small>Vendedora: {selected.seller?.full_name ?? 'Sin asignar'}</small></div><span className="badge badge-info">{orderStatusLabels[selected.status]}</span></div>
                 <div className="metric-grid four-metrics">
                   <Metric label="Venta final" value={commercialAccess ? formatClp(finalSale) : 'Restringido'} />
                   <Metric label="Pagado" value={commercialAccess ? formatClp(paid) : 'Restringido'} />
@@ -260,12 +262,11 @@ export function Orders({ profile, refreshToken, onChanged }: Props) {
                   <div className="form-grid three-columns">
                     <label>Venta bruta<input name="gross_sale_amount" type="number" min="0" defaultValue={selected.financials.gross_sale_amount} /></label>
                     <label>Descuento<input name="discount_amount" type="number" min="0" defaultValue={selected.financials.discount_amount} /></label>
-                    <label>IVA (%)<input name="tax_rate_snapshot" type="number" min="0" max="100" step="0.01" defaultValue={selected.financials.tax_rate_snapshot} /></label>
-                    <label>Comisión venta (%)<input name="sales_commission_rate_snapshot" type="number" min="0" max="100" step="0.01" defaultValue={selected.financials.sales_commission_rate_snapshot} /></label>
-                    <label>Comisión Transbank (%)<input name="card_fee_rate_snapshot" type="number" min="0" max="100" step="0.01" defaultValue={selected.financials.card_fee_rate_snapshot} /></label>
                     <label>Costo hora taller<input name="workshop_hourly_cost_snapshot" type="number" min="0" defaultValue={selected.financials.workshop_hourly_cost_snapshot} /></label>
                   </div>
-                  <small>Estas tasas son la fotografía del pedido. Cambiar los valores generales no altera pedidos anteriores.</small>
+                  <div className="snapshot-grid"><span>IVA histórico <strong>{selected.financials.tax_rate_snapshot}%</strong></span><span>Transbank histórico <strong>{selected.financials.card_fee_rate_snapshot}%</strong></span><span>Comisión vendedora <strong>{selected.financials.sales_commission_rate_snapshot}%</strong></span><span>Estado <strong>{selected.financials.commission_status === 'pending' ? 'Pendiente' : selected.financials.commission_status === 'approved' ? 'Aprobada' : 'Pagada'}</strong></span></div>
+                  <small>Las tasas son la fotografía del pedido y no se pueden editar. IVA se aplica tanto a efectivo como a tarjeta.</small>
+                  {profile.role === 'admin' && <div className="action-row">{selected.financials.commission_status === 'pending' && <button className="btn btn-secondary" type="button" onClick={() => void changeCommissionStatus('approved')}>Aprobar comisión</button>}{selected.financials.commission_status === 'approved' && <button className="btn btn-secondary" type="button" onClick={() => void changeCommissionStatus('paid')}>Marcar comisión pagada</button>}</div>}
                   <button className="btn btn-primary" disabled={loading}>Guardar ficha comercial</button>
                 </form>
               )}

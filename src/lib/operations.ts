@@ -35,11 +35,16 @@ export const costCategoryLabels: Record<CostCategory, string> = {
 
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
-  transfer: 'Transferencia',
-  debit_card: 'Débito',
-  credit_card: 'Crédito',
-  other: 'Otro',
+  transfer: 'Efectivo',
+  debit_card: 'Tarjeta',
+  credit_card: 'Tarjeta',
+  other: 'Otro (histórico)',
 }
+
+export const operationalPaymentMethods: Array<{ value: PaymentMethod; label: string }> = [
+  { value: 'cash', label: 'Efectivo (incluye transferencia)' },
+  { value: 'credit_card', label: 'Tarjeta (débito o crédito)' },
+]
 
 export function formatClp(value: number | null | undefined) {
   return new Intl.NumberFormat('es-CL', {

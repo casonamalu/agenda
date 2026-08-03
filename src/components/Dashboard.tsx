@@ -135,6 +135,7 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
         potential: potentialSales,
         pending: sales.length - completedSales - rejectedSales - potentialSales,
         effectiveness: evaluatedSales ? Math.round((completedSales / evaluatedSales) * 100) : 0,
+        withoutOrder: sales.filter((appointment) => appointment.commercial_outcome === 'completed_sale' && !appointment.order_id).length,
       },
     }
   }, [appointments, cursor])
@@ -201,7 +202,9 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
                 <Kpi label="Ventas rechazadas" value={summary.sales.rejected} />
                 <Kpi label="Posibles ventas" value={summary.sales.potential} />
                 <Kpi label="Sin resultado" value={summary.sales.pending} />
+                <Kpi label="Concretadas sin pedido" value={summary.sales.withoutOrder} />
               </div>
+              {summary.sales.withoutOrder > 0 && <div className="alert alert-warning">Hay ventas concretadas que aún deben transformarse en pedido desde la cita o desde Pedidos.</div>}
             </article>
 
             <article className="chart-card dashboard-span-two">

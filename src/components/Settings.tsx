@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import type { AppointmentSlot, AppointmentType, ClientType, Closure } from '../types'
+import type { AppointmentSlot, AppointmentType, ClientType, Closure, CommercialProductType, Profile, SellerProductCommission } from '../types'
 
 interface EmailTemplate {
   id: string
@@ -42,7 +42,6 @@ interface OperationsSettings {
   workshop_hourly_cost: string
   workshop_capacity_warning_percent: string
   default_tax_rate: string
-  default_sales_commission_rate: string
   default_card_fee_rate: string
 }
 
@@ -51,7 +50,7 @@ interface Props {
   onChanged: (message: string) => void
 }
 
-type Tab = 'appointment-types' | 'capacity' | 'operations' | 'client-types' | 'slots' | 'closures' | 'notifications' | 'templates'
+type Tab = 'appointment-types' | 'capacity' | 'operations' | 'commissions' | 'client-types' | 'slots' | 'closures' | 'notifications' | 'templates'
 
 const weekdayLabels: Record<number, string> = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' }
 const initialNotificationSettings: NotificationSettings = {
@@ -83,14 +82,13 @@ const initialOperationsSettings: OperationsSettings = {
   workshop_hourly_cost: '0',
   workshop_capacity_warning_percent: '85',
   default_tax_rate: '19',
-  default_sales_commission_rate: '0',
   default_card_fee_rate: '0',
 }
 
 export function Settings({ refreshToken, onChanged }: Props) {
   const [tab, setTab] = useState<Tab>(() => {
     const saved = window.localStorage.getItem('casona-malu-settings-tab')
-    const tabs: Tab[] = ['appointment-types', 'capacity', 'operations', 'client-types', 'slots', 'closures', 'notifications', 'templates']
+    const tabs: Tab[] = ['appointment-types', 'capacity', 'operations', 'commissions', 'client-types', 'slots', 'closures', 'notifications', 'templates']
     return tabs.includes(saved as Tab) ? saved as Tab : 'appointment-types'
   })
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
@@ -98,6 +96,12 @@ export function Settings({ refreshToken, onChanged }: Props) {
   const [slots, setSlots] = useState<AppointmentSlot[]>([])
   const [closures, setClosures] = useState<Closure[]>([])
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
+  const [sellers, setSellers] = useState<Profile[]>([])
+  const [productTypes, setProductTypes] = useState<CommercialProductType[]>([])
+  const [commissions, setCommissions] = useState<SellerProductCommission[]>([])
+  const [commissionSellerId, setCommissionSellerId] = useState('')
+  const [commissionProductIds, setCommissionProductIds] = useState<string[]>([])
+  const [commissionRate, setCommissionRate] = useState('0')
   const [capacitySettings, setCapacitySettings] = useState<CapacitySettings>(initialCapacitySettings)
   const [operationsSettings, setOperationsSettings] = useState<OperationsSettings>(initialOperationsSettings)
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(initialNotificationSettings)
@@ -112,19 +116,27 @@ export function Settings({ refreshToken, onChanged }: Props) {
   useEffect(() => { window.localStorage.setItem('casona-malu-settings-tab', tab) }, [tab])
 
   async function loadAll() {
-    const [typesResult, clientTypesResult, slotsResult, closuresResult, templatesResult, settingsResult] = await Promise.all([
+    const [typesResult, clientTypesResult, slotsResult, closuresResult, templatesResult, settingsResult, sellersResult, productTypesResult, commissionsResult] = await Promise.all([
       supabase.from('appointment_types').select('*').order('sort_order'),
       supabase.from('client_types').select('*').order('display_order'),
       supabase.from('appointment_slots').select('*').order('weekday').order('start_time'),
       supabase.from('closures').select('*').order('start_date', { ascending: false }),
       supabase.from('email_templates').select('*').order('name'),
       supabase.from('app_settings').select('setting_key,setting_value'),
+      supabase.from('profiles').select('*').eq('active', true).in('role', ['admin', 'seller']).order('full_name'),
+      supabase.from('commercial_product_types').select('*').eq('active', true).order('display_order'),
+      supabase.from('seller_product_commissions').select('*'),
     ])
     setAppointmentTypes((typesResult.data ?? []) as AppointmentType[])
     setClientTypes((clientTypesResult.data ?? []) as ClientType[])
     setSlots((slotsResult.data ?? []) as AppointmentSlot[])
     setClosures((closuresResult.data ?? []) as Closure[])
     setTemplates((templatesResult.data ?? []) as EmailTemplate[])
+    const sellerRows = (sellersResult.data ?? []) as Profile[]
+    setSellers(sellerRows)
+    setProductTypes((productTypesResult.data ?? []) as CommercialProductType[])
+    setCommissions((commissionsResult.data ?? []) as SellerProductCommission[])
+    setCommissionSellerId((current) => current || sellerRows[0]?.id || '')
     const settingsMap = Object.fromEntries((settingsResult.data ?? []).map((setting) => [setting.setting_key, setting.setting_value]))
     const retryValue = settingsMap.notification_retry_minutes
     setCapacitySettings({
@@ -156,7 +168,6 @@ export function Settings({ refreshToken, onChanged }: Props) {
       workshop_hourly_cost: String(settingsMap.workshop_hourly_cost ?? 0),
       workshop_capacity_warning_percent: String(settingsMap.workshop_capacity_warning_percent ?? 85),
       default_tax_rate: String(settingsMap.default_tax_rate ?? 19),
-      default_sales_commission_rate: String(settingsMap.default_sales_commission_rate ?? 0),
       default_card_fee_rate: String(settingsMap.default_card_fee_rate ?? 0),
     })
   }
@@ -294,10 +305,9 @@ export function Settings({ refreshToken, onChanged }: Props) {
     const hourlyCost = Number(operationsSettings.workshop_hourly_cost)
     const warning = Number(operationsSettings.workshop_capacity_warning_percent)
     const tax = Number(operationsSettings.default_tax_rate)
-    const salesCommission = Number(operationsSettings.default_sales_commission_rate)
     const cardFee = Number(operationsSettings.default_card_fee_rate)
-    if ([weeklyHours, hourlyCost, warning, tax, salesCommission, cardFee].some((value) => !Number.isFinite(value) || value < 0)
-      || warning > 100 || tax > 100 || salesCommission > 100 || cardFee > 100) {
+    if ([weeklyHours, hourlyCost, warning, tax, cardFee].some((value) => !Number.isFinite(value) || value < 0)
+      || warning > 100 || tax > 100 || cardFee > 100) {
       setError('Revisa las horas, costos y porcentajes configurados.')
       return
     }
@@ -307,12 +317,32 @@ export function Settings({ refreshToken, onChanged }: Props) {
       { setting_key: 'workshop_hourly_cost', setting_value: hourlyCost, description: 'Costo interno por hora de taller en CLP' },
       { setting_key: 'workshop_capacity_warning_percent', setting_value: warning, description: 'Porcentaje semanal que activa advertencia de capacidad' },
       { setting_key: 'default_tax_rate', setting_value: tax, description: 'IVA predeterminado para nuevos pedidos' },
-      { setting_key: 'default_sales_commission_rate', setting_value: salesCommission, description: 'Comisión de venta predeterminada para nuevos pedidos' },
       { setting_key: 'default_card_fee_rate', setting_value: cardFee, description: 'Comisión Transbank predeterminada para nuevos pedidos' },
     ], { onConflict: 'setting_key' })
     setSavingOperations(false)
     if (saveError) setError(saveError.message)
     else { await loadAll(); onChanged('Configuración comercial y de taller actualizada.') }
+  }
+
+  async function saveCommissionRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    const rate = Number(commissionRate)
+    if (!commissionSellerId || !commissionProductIds.length || !Number.isFinite(rate) || rate < 0 || rate > 100) {
+      setError('Selecciona una vendedora, uno o más productos y una comisión entre 0 y 100%.')
+      return
+    }
+    const { error: saveError } = await supabase.rpc('set_seller_product_commissions', {
+      p_seller_id: commissionSellerId,
+      p_product_type_ids: commissionProductIds,
+      p_commission_rate: rate,
+    })
+    if (saveError) setError(saveError.message)
+    else {
+      setCommissionProductIds([])
+      await loadAll()
+      onChanged('Matriz de comisiones actualizada. Los pedidos anteriores conservan sus tasas.')
+    }
   }
 
   async function saveCapacitySettings(event: FormEvent<HTMLFormElement>) {
@@ -420,6 +450,7 @@ export function Settings({ refreshToken, onChanged }: Props) {
         <button className={tab === 'appointment-types' ? 'active' : ''} onClick={() => setTab('appointment-types')}>Tipos de cita</button>
         <button className={tab === 'capacity' ? 'active' : ''} onClick={() => setTab('capacity')}>Capacidad diaria</button>
         <button className={tab === 'operations' ? 'active' : ''} onClick={() => setTab('operations')}>Comercial y taller</button>
+        <button className={tab === 'commissions' ? 'active' : ''} onClick={() => setTab('commissions')}>Comisiones vendedoras</button>
         <button className={tab === 'client-types' ? 'active' : ''} onClick={() => setTab('client-types')}>Tipos de cliente</button>
         <button className={tab === 'slots' ? 'active' : ''} onClick={() => setTab('slots')}>Bloques</button>
         <button className={tab === 'closures' ? 'active' : ''} onClick={() => setTab('closures')}>Feriados y cierres</button>
@@ -528,14 +559,37 @@ export function Settings({ refreshToken, onChanged }: Props) {
           <article className="settings-card">
             <h2>Valores comerciales predeterminados</h2>
             <p>Se copian al crear cada pedido. El pedido conserva su propia tasa histórica aunque posteriormente cambies estos valores.</p>
-            <div className="form-grid three-columns">
+            <div className="form-grid two-columns">
               <label>IVA (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_tax_rate} onChange={(event) => updateOperationsSetting('default_tax_rate', event.target.value)} /></label>
-              <label>Comisión de venta (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_sales_commission_rate} onChange={(event) => updateOperationsSetting('default_sales_commission_rate', event.target.value)} /></label>
               <label>Comisión Transbank (%)<input required type="number" min="0" max="100" step="0.01" value={operationsSettings.default_card_fee_rate} onChange={(event) => updateOperationsSetting('default_card_fee_rate', event.target.value)} /></label>
             </div>
+            <p className="form-help">El IVA se aplica a todas las ventas. Transbank se descuenta únicamente de pagos con tarjeta.</p>
             <button className="btn btn-primary" disabled={savingOperations}>{savingOperations ? 'Guardando…' : 'Guardar configuración'}</button>
           </article>
         </form>
+      )}
+
+      {tab === 'commissions' && (
+        <div className="settings-list">
+          <form className="settings-card form-stack" onSubmit={saveCommissionRule}>
+            <h2>Asignar comisión por vendedora y producto</h2>
+            <p>Puedes seleccionar uno o varios tipos de producto. Todos parten en 0%; una tasa no configurada nunca bloquea la venta.</p>
+            <div className="form-grid two-columns">
+              <label>Vendedora<select value={commissionSellerId} onChange={(event) => setCommissionSellerId(event.target.value)} required>{sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.full_name}</option>)}</select></label>
+              <label>Comisión sobre base neta (%)<input type="number" min="0" max="100" step="0.01" value={commissionRate} onChange={(event) => setCommissionRate(event.target.value)} required /></label>
+            </div>
+            <fieldset className="product-check-grid">
+              <legend>Tipos de producto</legend>
+              {productTypes.map((product) => <label className="check-row" key={product.id}><input type="checkbox" checked={commissionProductIds.includes(product.id)} onChange={(event) => setCommissionProductIds((current) => event.target.checked ? [...current, product.id] : current.filter((id) => id !== product.id))} />{product.name}</label>)}
+            </fieldset>
+            <button className="btn btn-primary">Aplicar comisión a productos seleccionados</button>
+          </form>
+          <article className="settings-card">
+            <h2>Matriz vigente</h2>
+            <div className="table-card"><table><thead><tr><th>Vendedora</th>{productTypes.map((product) => <th key={product.id}>{product.name}</th>)}</tr></thead><tbody>{sellers.map((seller) => <tr key={seller.id}><td><strong>{seller.full_name}</strong></td>{productTypes.map((product) => { const rate = Number(commissions.find((item) => item.seller_id === seller.id && item.product_type_id === product.id)?.commission_rate ?? 0); return <td key={product.id}><span className={`badge ${rate === 0 ? 'badge-warning' : 'badge-success'}`}>{rate}%</span></td> })}</tr>)}</tbody></table></div>
+            <p className="form-help">Al crear un pedido se congela la tasa de esta matriz. Cambios posteriores solo afectan pedidos nuevos.</p>
+          </article>
+        </div>
       )}
 
       {tab === 'client-types' && (

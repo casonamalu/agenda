@@ -175,6 +175,7 @@ small { color: var(--muted); }
 .alert-danger { background: #fbe5e5; border: 1px solid #edc4c4; color: #8e2929; }
 .alert-info { background: #eaf4fb; border: 1px solid #c8e0f1; color: #285b78; }
 .alert-success { background: #e3f4ec; border: 1px solid #bfe2d2; color: #28634e; }
+.alert-warning { background: #fff4dc; border: 1px solid #ead29d; color: #744d0a; }
 .toast { position: fixed; right: 20px; bottom: 20px; z-index: 300; max-width: min(440px, calc(100vw - 40px)); padding: 13px 15px; border-radius: 12px; box-shadow: var(--shadow); color: #fff; display: flex; align-items: center; gap: 12px; }
 .toast-success { background: var(--success); }
 .toast-error { background: var(--danger); }
@@ -192,6 +193,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .badge-muted, .badge-cancelled { background: #eee; color: #666; }
 .badge-failed { background: #f9dddd; color: #8c2d2d; }
 .badge-retry, .badge-pending { background: #fff0d6; color: #805110; }
+.badge-warning { background: #fff0d6; color: #805110; }
 .table-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; }
@@ -285,6 +287,40 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .workshop-order-card label { font-size: 11px; }
 .workshop-order-card input, .workshop-order-card select { padding: 8px; font-size: 12px; }
 
+/* Release 3.1: flujo comercial y agenda integrada */
+.order-wizard { display: grid; gap: 18px; border-color: #cfaeb8; }
+.wizard-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wizard-steps li { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; border-radius: 11px; color: var(--muted); background: #f5f1ef; font-weight: 700; font-size: 13px; }
+.wizard-steps li span { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #ddd4d0; }
+.wizard-steps li.active { color: var(--primary); background: var(--primary-soft); }
+.wizard-steps li.active span { color: #fff; background: var(--primary); }
+.wizard-actions { display: flex; justify-content: space-between; gap: 10px; padding-top: 4px; }
+.schedule-controls, .filter-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.filter-bar { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
+.mobile-date-strip { display: grid; grid-template-columns: repeat(7, minmax(58px, 1fr)); gap: 7px; overflow-x: auto; }
+.mobile-date-strip button { border: 1px solid var(--line); background: #fff; border-radius: 11px; padding: 9px 7px; display: grid; gap: 3px; color: var(--muted); }
+.mobile-date-strip button span { text-transform: capitalize; font-size: 11px; }
+.mobile-date-strip button strong { font-size: 17px; color: var(--text); }
+.mobile-date-strip button.active { border-color: var(--primary); background: var(--primary-soft); }
+.slot-picker { display: grid; grid-template-columns: repeat(3, minmax(130px, 1fr)); gap: 9px; }
+.slot-picker button { min-height: 70px; border-radius: 12px; padding: 11px; text-align: left; display: grid; gap: 4px; }
+.slot-picker button strong { font-size: 17px; }
+.slot-picker button span { font-size: 11px; }
+.slot-available { border: 1px solid #9dceb8; background: #eff9f4; color: #245f48; }
+.slot-unavailable { border: 1px solid var(--line); background: #f5f3f2; color: #8a817d; }
+.scheduled-list { border-top: 1px solid var(--line); padding-top: 13px; display: grid; gap: 8px; }
+.scheduled-list article { border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.scheduled-list article > div { display: grid; gap: 3px; }
+.scheduled-list article span { color: var(--muted); font-size: 12px; }
+.order-summary > article { border: 1px solid var(--line); border-radius: 12px; padding: 13px; }
+.snapshot-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+.snapshot-grid span { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 4px; color: var(--muted); font-size: 11px; }
+.snapshot-grid strong { color: var(--text); font-size: 15px; }
+.order-cta { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.product-check-grid { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); gap: 10px; }
+.product-check-grid legend { padding: 0 6px; color: var(--primary); font-weight: 750; }
+.commercial-kpis { grid-template-columns: repeat(5, minmax(140px, 1fr)); }
+
 @media (max-width: 1100px) {
   .app-shell { grid-template-columns: 84px minmax(0, 1fr); }
   .sidebar { padding-inline: 10px; }
@@ -306,6 +342,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
   .capacity-week-grid { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
   .workshop-order-card { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
   .inline-cost-form { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+  .commercial-kpis { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -355,6 +392,14 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
   .order-list-panel { position: static; max-height: none; }
   .workshop-order-card, .inline-cost-form { grid-template-columns: 1fr; }
   .simple-list li, .detail-heading { flex-direction: column; }
+  .wizard-steps li { font-size: 11px; padding: 8px 4px; }
+  .schedule-controls, .filter-bar, .snapshot-grid { grid-template-columns: 1fr; }
+  .mobile-date-strip { grid-template-columns: repeat(7, 62px); }
+  .slot-picker { grid-template-columns: 1fr; }
+  .slot-picker button { min-height: 64px; }
+  .scheduled-list article, .order-cta { align-items: stretch; flex-direction: column; }
+  .wizard-actions { position: sticky; bottom: 67px; z-index: 20; margin: 0 -18px -18px; padding: 12px 18px; background: rgba(255,255,255,.97); border-top: 1px solid var(--line); }
+  .product-check-grid, .commercial-kpis { grid-template-columns: 1fr; }
 }
 
 @media print {

@@ -8,6 +8,7 @@ export type OrderStatus = 'quote' | 'confirmed' | 'pending_planning' | 'planned'
 export type CostPhase = 'estimated' | 'actual'
 export type CostCategory = 'fabric' | 'lining' | 'accessories' | 'external_service' | 'other'
 export type PaymentMethod = 'cash' | 'transfer' | 'debit_card' | 'credit_card' | 'other'
+export type CommissionStatus = 'pending' | 'approved' | 'paid'
 
 export interface Profile {
   id: string
@@ -110,6 +111,26 @@ export interface OrderFinancials {
   sales_commission_rate_snapshot: number
   card_fee_rate_snapshot: number
   workshop_hourly_cost_snapshot: number
+  commission_status: CommissionStatus
+  commission_base_snapshot: number | null
+  sales_commission_amount_snapshot: number | null
+  commission_approved_at: string | null
+  commission_paid_at: string | null
+}
+
+export interface CommercialProductType {
+  id: string
+  code: 'bride_dress' | 'mother_dress' | 'graduation_dress' | 'mens_suit' | 'accessories'
+  name: string
+  display_order: number
+  active: boolean
+}
+
+export interface SellerProductCommission {
+  seller_id: string
+  product_type_id: string
+  commission_rate: number
+  updated_at: string
 }
 
 export interface OrderCostItem {
@@ -146,6 +167,7 @@ export interface Order {
   client_id: string
   source_appointment_id: string | null
   seller_id: string | null
+  product_type_id: string | null
   production_route: ProductionRoute
   status: OrderStatus
   product_name: string
@@ -165,6 +187,8 @@ export interface Order {
   created_at: string
   updated_at: string
   client?: Client
+  seller?: Profile | null
+  product_type?: CommercialProductType | null
   financials?: OrderFinancials | null
   cost_items?: OrderCostItem[]
   payments?: OrderPayment[]

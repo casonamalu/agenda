@@ -39,6 +39,7 @@ export default function App() {
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
   const [newAppointmentDate, setNewAppointmentDate] = useState(toIsoDate(new Date()))
   const [refreshToken, setRefreshToken] = useState(0)
+  const [orderLaunchAppointmentId, setOrderLaunchAppointmentId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' }>({ message: '', kind: 'info' })
 
   useEffect(() => {
@@ -104,6 +105,13 @@ export default function App() {
     setToast({ message, kind: 'success' })
   }
 
+  function openOrderFromAppointment(appointment: Appointment) {
+    setModalOpen(false)
+    setSelectedAppointment(null)
+    setOrderLaunchAppointmentId(appointment.id)
+    setPage('orders')
+  }
+
   function notify(message: string, kind: 'success' | 'error' | 'info' = 'success') {
     setRefreshToken((value) => value + 1)
     setToast({ message, kind })
@@ -118,7 +126,7 @@ export default function App() {
         {page === 'agenda' && <Agenda refreshToken={refreshToken} onOpenAppointment={openAppointment} onDateForNewAppointment={openNewAppointment} />}
         {page === 'dashboard' && <Dashboard refreshToken={refreshToken} />}
         {page === 'clients' && <Clients profile={profile} refreshToken={refreshToken} onChanged={notify} />}
-        {page === 'orders' && <Orders profile={profile} refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'orders' && <Orders profile={profile} refreshToken={refreshToken} initialAppointmentId={orderLaunchAppointmentId} onLaunchHandled={() => setOrderLaunchAppointmentId(null)} onChanged={notify} />}
         {page === 'cash' && ['admin', 'seller'].includes(profile.role) && <Cash refreshToken={refreshToken} onChanged={notify} />}
         {page === 'workshop' && <Workshop profile={profile} refreshToken={refreshToken} onChanged={notify} />}
         {page === 'profitability' && ['admin', 'seller'].includes(profile.role) && <Profitability refreshToken={refreshToken} />}
@@ -135,6 +143,7 @@ export default function App() {
         initialDate={newAppointmentDate}
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
+        onCreateOrder={openOrderFromAppointment}
       />
       {profile.must_change_password && <ChangePassword profile={profile} onCompleted={(updated) => setProfile(updated)} />}
       <Toast message={toast.message} kind={toast.kind} onClose={() => setToast({ ...toast, message: '' })} />

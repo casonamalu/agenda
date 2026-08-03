@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { formatClp, orderCode, paymentMethodLabels } from '../lib/operations'
+import { formatClp, operationalPaymentMethods, orderCode, paymentMethodLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
 import type { CashMovement, Order, OrderPayment, PaymentMethod } from '../types'
 
@@ -116,7 +116,7 @@ export function Cash({ refreshToken, onChanged }: Props) {
           <label>Pedido<select name="order_id" required defaultValue=""><option value="" disabled>Seleccionar…</option>{orders.map((order) => <option key={order.id} value={order.id}>{orderCode(order.order_sequence)} · {order.client?.first_name} {order.client?.last_name}</option>)}</select></label>
           <div className="form-grid two-columns">
             <label>Monto<input name="amount" type="number" min="1" step="1" required /></label>
-            <label>Medio de pago<select name="method" defaultValue="transfer">{Object.entries(paymentMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Medio de pago<select name="method" defaultValue="cash">{operationalPaymentMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
             <label>Fecha y hora<input name="paid_at" type="datetime-local" required defaultValue={localDateTime()} /></label>
             <label>N.º documento<input name="document_number" /></label>
             <label>Referencia<input name="reference" /></label>
@@ -131,7 +131,7 @@ export function Cash({ refreshToken, onChanged }: Props) {
             <label>Tipo<select name="direction" defaultValue="expense"><option value="income">Ingreso</option><option value="expense">Egreso</option></select></label>
             <label>Categoría<input name="category" required placeholder="Arriendo, sueldo, insumos…" /></label>
             <label>Monto<input name="amount" type="number" min="1" step="1" required /></label>
-            <label>Medio<select name="method" defaultValue="transfer">{Object.entries(paymentMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            <label>Medio<select name="method" defaultValue="cash">{operationalPaymentMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
             <label>Fecha y hora<input name="occurred_at" type="datetime-local" required defaultValue={localDateTime()} /></label>
             <label>Pedido relacionado<select name="order_id" defaultValue=""><option value="">No aplica</option>{orders.map((order) => <option key={order.id} value={order.id}>{orderCode(order.order_sequence)}</option>)}</select></label>
           </div>

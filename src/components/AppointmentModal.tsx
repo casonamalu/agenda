@@ -18,6 +18,7 @@ interface Props {
   initialDate: string
   onClose: () => void
   onSaved: (message: string) => void
+  onCreateOrder: (appointment: Appointment) => void
 }
 
 const emptyClient = {
@@ -36,7 +37,7 @@ function timeToMinutes(value: string) {
   return hours * 60 + minutes
 }
 
-export function AppointmentModal({ open, profile, appointment, initialDate, onClose, onSaved }: Props) {
+export function AppointmentModal({ open, profile, appointment, initialDate, onClose, onSaved, onCreateOrder }: Props) {
   const [types, setTypes] = useState<AppointmentType[]>([])
   const [clientTypes, setClientTypes] = useState<ClientType[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -235,7 +236,10 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     })
     setLoading(false)
     if (outcomeError) setError(outcomeError.message)
-    else onSaved(commercialOutcome ? 'El resultado comercial quedó registrado y auditado.' : 'Se eliminó el resultado comercial.')
+    else {
+      onSaved(commercialOutcome ? 'El resultado comercial quedó registrado y auditado.' : 'Se eliminó el resultado comercial.')
+      if (commercialOutcome === 'completed_sale') onCreateOrder({ ...appointment, commercial_outcome: commercialOutcome })
+    }
   }
 
   async function changeStatus(status: 'cancelled' | 'no_show') {
@@ -447,6 +451,12 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                 </label>
                 <div className="action-row align-end"><button type="button" className="btn btn-primary" disabled={loading} onClick={() => void saveCommercialOutcome()}>Guardar resultado</button></div>
               </div>
+              {appointment.commercial_outcome === 'completed_sale' && (
+                <div className="alert alert-success order-cta">
+                  <span>{appointment.order_id ? 'Esta venta ya tiene un pedido vinculado.' : 'Venta concretada lista para convertirse en pedido.'}</span>
+                  <button type="button" className="btn btn-primary" onClick={() => onCreateOrder(appointment)}>{appointment.order_id ? 'Ver pedido' : 'Crear pedido'}</button>
+                </div>
+              )}
             </fieldset>
           )}
 

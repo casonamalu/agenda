@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { formatDate, toIsoDate } from '../lib/date'
 import { costCategoryLabels, formatClp, orderCode, orderStatusLabels, orderStatuses, productionRouteLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
-import type { Appointment, AppointmentType, Client, CommercialProductType, CostCategory, CostPhase, Order, OrderFinancials, Profile, SellerProductCommission } from '../types'
+import type { Appointment, Client, CommercialProductType, CostCategory, CostPhase, Order, OrderFinancials, Profile } from '../types'
 import { OrderWizard } from './OrderWizard'
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
   refreshToken: number
   initialAppointmentId: string | null
   onLaunchHandled: () => void
+  onOpenAppointment: (appointment: Appointment) => void
+  onNewAppointment: () => void
   onChanged: (message: string, kind?: 'success' | 'error' | 'info') => void
 }
 
@@ -23,16 +25,14 @@ const orderSelect = `
   ,product_type:commercial_product_types(*)
 `
 
-export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHandled, onChanged }: Props) {
+export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHandled, onOpenAppointment, onNewAppointment, onChanged }: Props) {
   const commercialAccess = profile.role === 'admin' || profile.role === 'seller'
   const costAccess = commercialAccess || profile.role === 'workshop'
   const [orders, setOrders] = useState<Order[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
   const [sellers, setSellers] = useState<Profile[]>([])
   const [productTypes, setProductTypes] = useState<CommercialProductType[]>([])
-  const [commissions, setCommissions] = useState<SellerProductCommission[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [showNew, setShowNew] = useState(false)
@@ -41,6 +41,11 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
   const [error, setError] = useState('')
 
   const selected = orders.find((order) => order.id === selectedId) ?? null
+  const pendingDecisions = useMemo(
+    () => appointments.filter((item) => item.appointment_type?.category === 'sale' && item.commercial_outcome === 'potential_sale' && !item.order_id),
+    [appointments],
+  )
+
   const filtered = useMemo(() => {
     const term = query.trim().toLocaleLowerCase('es-CL')
     if (!term) return orders
@@ -87,24 +92,20 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
 
   async function loadData(selectId?: string) {
     setError('')
-    const [ordersResult, clientsResult, appointmentsResult, appointmentTypesResult, sellersResult, productTypesResult, commissionsResult] = await Promise.all([
+    const [ordersResult, clientsResult, appointmentsResult, sellersResult, productTypesResult] = await Promise.all([
       supabase.from('orders').select(orderSelect).order('created_at', { ascending: false }),
       supabase.from('clients').select('*, client_type:client_types(*)').eq('active', true).order('last_name'),
       supabase.from('appointments').select('*, appointment_type:appointment_types(*), client:clients(*)').neq('status', 'cancelled').order('appointment_date', { ascending: false }).limit(300),
-      supabase.from('appointment_types').select('*').eq('active', true).order('sort_order'),
       supabase.from('profiles').select('*').eq('active', true).in('role', ['admin', 'seller']).order('full_name'),
       supabase.from('commercial_product_types').select('*').eq('active', true).order('display_order'),
-      supabase.from('seller_product_commissions').select('*'),
     ])
     if (ordersResult.error) setError(ordersResult.error.message)
     if (clientsResult.error) setError(clientsResult.error.message)
     setOrders((ordersResult.data ?? []) as unknown as Order[])
     setClients((clientsResult.data ?? []) as Client[])
     setAppointments((appointmentsResult.data ?? []) as unknown as Appointment[])
-    setAppointmentTypes((appointmentTypesResult.data ?? []) as AppointmentType[])
     setSellers((sellersResult.data ?? []) as Profile[])
     setProductTypes((productTypesResult.data ?? []) as CommercialProductType[])
-    setCommissions((commissionsResult.data ?? []) as SellerProductCommission[])
     if (selectId) setSelectedId(selectId)
   }
 
@@ -206,20 +207,45 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
   return (
     <section className="page-section">
       <div className="page-heading">
-        <div><h1>Pedidos</h1><p>Seguimiento comercial, costos y trazabilidad desde la venta hasta la entrega.</p></div>
-        {commercialAccess && <button className="btn btn-primary" type="button" onClick={toggleNewOrder}>{showNew ? 'Cerrar' : '+ Nuevo pedido'}</button>}
+        <div><h1>Ventas</h1><p>Decisiones pendientes, ventas aceptadas y seguimiento hasta la entrega.</p></div>
+        {commercialAccess && <button className="btn btn-primary" type="button" onClick={toggleNewOrder}>{showNew ? 'Cerrar' : '+ Registrar venta'}</button>}
       </div>
       {error && <div className="alert alert-danger">{error}</div>}
+
+      {commercialAccess && pendingDecisions.length > 0 && (
+        <div className="panel">
+          <div className="detail-heading">
+            <div>
+              <h2>Clientes pendientes de decisión</h2>
+              <p>Cuando una cliente confirme o rechace días después, registra aquí la fecha efectiva.</p>
+            </div>
+            <span className="badge badge-info">{pendingDecisions.length} pendiente{pendingDecisions.length === 1 ? '' : 's'}</span>
+          </div>
+          <div className="table-card">
+            <table>
+              <thead><tr><th>Cita de venta</th><th>Cliente</th><th>Pendiente desde</th><th /></tr></thead>
+              <tbody>
+                {pendingDecisions.map((item) => (
+                  <tr key={item.id}>
+                    <td>{formatDate(item.appointment_date)} · {item.start_time.slice(0, 5)}</td>
+                    <td>{item.client?.first_name} {item.client?.last_name}</td>
+                    <td>{item.commercial_outcome_at ? formatDate(chileIsoDate(item.commercial_outcome_at)) : formatDate(item.appointment_date)}</td>
+                    <td><button className="btn btn-primary btn-sm" type="button" onClick={() => onOpenAppointment(item)}>Registrar decisión</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {showNew && commercialAccess && (
         <OrderWizard
           profile={profile}
           clients={clients}
           appointments={appointments}
-          appointmentTypes={appointmentTypes}
           sellers={sellers}
           productTypes={productTypes}
-          commissions={commissions}
           initialAppointmentId={wizardAppointmentId}
           onCancel={() => { setShowNew(false); setWizardAppointmentId(null) }}
           onError={setError}
@@ -229,7 +255,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
 
       <div className="split-workspace">
         <div className="panel order-list-panel">
-          <label>Buscar pedidos<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, código, producto o estado" /></label>
+          <label>Buscar ventas<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, código, producto o estado" /></label>
           <div className="order-list">
             {filtered.map((order) => (
               <button type="button" key={order.id} className={selectedId === order.id ? 'order-list-item active' : 'order-list-item'} onClick={() => setSelectedId(order.id)}>
@@ -237,12 +263,12 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
                 <span><strong>{order.product_name}</strong><small>{orderStatusLabels[order.status]}</small></span>
               </button>
             ))}
-            {!filtered.length && <p className="empty-state">No hay pedidos para mostrar.</p>}
+            {!filtered.length && <p className="empty-state">No hay ventas para mostrar.</p>}
           </div>
         </div>
 
         <div className="order-detail">
-          {!selected && <div className="panel empty-state">Selecciona un pedido para revisar su ficha.</div>}
+          {!selected && <div className="panel empty-state">Selecciona una venta para revisar su ficha.</div>}
           {selected && (
             <>
               <div className="panel">
@@ -305,8 +331,11 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
               )}
 
               <div className="panel form-stack">
-                <h3>Citas vinculadas</h3>
-                {linkableAppointments.length > 0 && <label>Agregar cita<select defaultValue="" onChange={(event) => { void linkAppointment(event.target.value); event.target.value = '' }}><option value="">Seleccionar…</option>{linkableAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.appointment_type?.name}</option>)}</select></label>}
+                <div className="detail-heading">
+                  <div><h3>Agenda posterior a la venta</h3><p>Crea Prueba 1, Prueba 2 o Entrega desde Agenda y luego vincúlala aquí.</p></div>
+                  <button className="btn btn-primary btn-sm" type="button" onClick={onNewAppointment}>+ Crear cita</button>
+                </div>
+                {linkableAppointments.length > 0 && <label>Vincular cita existente<select defaultValue="" onChange={(event) => { void linkAppointment(event.target.value); event.target.value = '' }}><option value="">Seleccionar…</option>{linkableAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.appointment_type?.name}</option>)}</select></label>}
                 <ul className="simple-list">{linkedAppointments.map((item) => <li key={item.id}><strong>{item.appointment_type?.name}</strong><span>{formatDate(item.appointment_date)} · {item.start_time.slice(0, 5)}</span></li>)}{!linkedAppointments.length && <li>Sin citas vinculadas.</li>}</ul>
               </div>
             </>
@@ -328,4 +357,15 @@ function sumCosts(order: Order | null, phase: CostPhase) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric-card compact"><span>{label}</span><strong>{value}</strong></div>
+}
+
+function chileIsoDate(value: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
 }

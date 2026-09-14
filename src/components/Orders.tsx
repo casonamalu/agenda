@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { chileIsoDate } from '../lib/business'
 import { formatDate, toIsoDate } from '../lib/date'
 import { costCategoryLabels, formatClp, orderCode, orderStatusLabels, orderStatuses, productionRouteLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
@@ -357,15 +358,4 @@ function sumCosts(order: Order | null, phase: CostPhase) {
 
 function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric-card compact"><span>{label}</span><strong>{value}</strong></div>
-}
-
-function chileIsoDate(value: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Santiago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(value))
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
 }

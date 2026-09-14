@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { reportDateRange } from '../lib/business'
 import { supabase } from '../lib/supabase'
 import type { AppointmentStatus, AppointmentType, Profile, ScheduledReport } from '../types'
 
@@ -366,34 +367,6 @@ function periodLabel(period: ScheduledReport['period_type']) {
   if (period === 'tomorrow') return 'Día siguiente'
   if (period === 'fortnight') return 'Próximos 14 días'
   return 'Próximos 7 días'
-}
-
-function reportDateRange(period: ScheduledReport['period_type']) {
-  const today = chileIsoDate()
-  if (period === 'tomorrow') {
-    const tomorrow = addIsoDays(today, 1)
-    return { from: tomorrow, to: tomorrow }
-  }
-  if (period === 'week') return { from: today, to: addIsoDays(today, 6) }
-  if (period === 'fortnight') return { from: today, to: addIsoDays(today, 13) }
-  return { from: today, to: today }
-}
-
-function chileIsoDate() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Santiago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date())
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
-}
-
-function addIsoDays(value: string, days: number) {
-  const date = new Date(`${value}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + days)
-  return date.toISOString().slice(0, 10)
 }
 
 function reportDocument(

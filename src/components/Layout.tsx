@@ -17,7 +17,7 @@ const navItems: Array<{ key: PageKey; label: string; icon: string; adminOnly?: b
   { key: 'agenda', label: 'Agenda', icon: '▦' },
   { key: 'dashboard', label: 'Indicadores', icon: '◫' },
   { key: 'clients', label: 'Clientes', icon: '♙' },
-  { key: 'orders', label: 'Pedidos', icon: '◇' },
+  { key: 'orders', label: 'Ventas', icon: '◇' },
   { key: 'cash', label: 'Caja', icon: '$', commercialOnly: true },
   { key: 'workshop', label: 'Taller', icon: '⌁' },
   { key: 'profitability', label: 'Rentabilidad', icon: '%', commercialOnly: true },
@@ -107,7 +107,7 @@ export function Layout({ children, profile, page, setPage, onNewAppointment }: L
         <header className="topbar">
           <div>
             <strong>Sistema Casona Malú</strong>
-            <span>Agenda · Pedidos · Caja · Taller</span>
+            <span>Agenda · Ventas · Caja · Taller</span>
           </div>
           <button className="btn btn-primary" type="button" onClick={onNewAppointment}>
             + Nueva cita

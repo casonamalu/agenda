@@ -126,8 +126,8 @@ export default function App() {
         {page === 'agenda' && <Agenda refreshToken={refreshToken} onOpenAppointment={openAppointment} onDateForNewAppointment={openNewAppointment} />}
         {page === 'dashboard' && <Dashboard refreshToken={refreshToken} />}
         {page === 'clients' && <Clients profile={profile} refreshToken={refreshToken} onChanged={notify} />}
-        {page === 'orders' && <Orders profile={profile} refreshToken={refreshToken} initialAppointmentId={orderLaunchAppointmentId} onLaunchHandled={() => setOrderLaunchAppointmentId(null)} onChanged={notify} />}
-        {page === 'cash' && ['admin', 'seller'].includes(profile.role) && <Cash refreshToken={refreshToken} onChanged={notify} />}
+        {page === 'orders' && <Orders profile={profile} refreshToken={refreshToken} initialAppointmentId={orderLaunchAppointmentId} onLaunchHandled={() => setOrderLaunchAppointmentId(null)} onOpenAppointment={openAppointment} onNewAppointment={() => openNewAppointment()} onChanged={notify} />}
+        {page === 'cash' && ['admin', 'seller'].includes(profile.role) && <Cash profile={profile} refreshToken={refreshToken} onChanged={notify} />}
         {page === 'workshop' && <Workshop profile={profile} refreshToken={refreshToken} onChanged={notify} />}
         {page === 'profitability' && ['admin', 'seller'].includes(profile.role) && <Profitability refreshToken={refreshToken} />}
         {page === 'reports' && profile.role === 'admin' && <Reports profile={profile} refreshToken={refreshToken} onChanged={notify} />}

@@ -195,16 +195,16 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
 
             <article className="chart-card dashboard-span-two">
               <h2>Efectividad de las citas de Venta</h2>
-              <p>La efectividad considera las ventas concretadas sobre las decisiones definitivas: concretadas más rechazadas. Las posibles ventas se muestran aparte.</p>
+              <p>La efectividad considera las ventas aceptadas sobre las decisiones definitivas: aceptadas más rechazadas. Las ventas pendientes se muestran aparte.</p>
               <div className="sales-outcome-grid">
                 <Kpi label="Efectividad" value={`${summary.sales.effectiveness}%`} />
-                <Kpi label="Ventas concretadas" value={summary.sales.completed} />
+                <Kpi label="Ventas aceptadas" value={summary.sales.completed} />
                 <Kpi label="Ventas rechazadas" value={summary.sales.rejected} />
-                <Kpi label="Posibles ventas" value={summary.sales.potential} />
+                <Kpi label="Pendientes de decisión" value={summary.sales.potential} />
                 <Kpi label="Sin resultado" value={summary.sales.pending} />
-                <Kpi label="Concretadas sin pedido" value={summary.sales.withoutOrder} />
+                <Kpi label="Aceptadas sin registrar" value={summary.sales.withoutOrder} />
               </div>
-              {summary.sales.withoutOrder > 0 && <div className="alert alert-warning">Hay ventas concretadas que aún deben transformarse en pedido desde la cita o desde Pedidos.</div>}
+              {summary.sales.withoutOrder > 0 && <div className="alert alert-warning">Hay ventas aceptadas que aún deben registrarse desde la cita o desde Ventas.</div>}
             </article>
 
             <article className="chart-card dashboard-span-two">

@@ -11,6 +11,15 @@ interface SlotOption {
   regular_slot: boolean
 }
 
+interface CommercialDecision {
+  id: string
+  previous_outcome: CommercialOutcome | null
+  new_outcome: CommercialOutcome | null
+  effective_date: string | null
+  notes: string | null
+  changed_at: string
+}
+
 interface Props {
   open: boolean
   profile: Profile
@@ -20,6 +29,8 @@ interface Props {
   onSaved: (message: string) => void
   onCreateOrder: (appointment: Appointment) => void
 }
+
+const DEFAULT_EXCEPTION_REASON = 'Excepción autorizada sin comentario adicional'
 
 const emptyClient = {
   first_name: '',
@@ -35,6 +46,18 @@ const emptyClient = {
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(':').map(Number)
   return hours * 60 + minutes
+}
+
+function chileIsoDate(value: string | Date = new Date()) {
+  const date = typeof value === 'string' ? new Date(value) : value
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
 }
 
 export function AppointmentModal({ open, profile, appointment, initialDate, onClose, onSaved, onCreateOrder }: Props) {
@@ -57,6 +80,9 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [exceptionReason, setExceptionReason] = useState('')
   const [cancellationReason, setCancellationReason] = useState('Solicitud del cliente')
   const [commercialOutcome, setCommercialOutcome] = useState<CommercialOutcome | ''>('')
+  const [commercialDecisionDate, setCommercialDecisionDate] = useState(chileIsoDate)
+  const [commercialNotes, setCommercialNotes] = useState('')
+  const [commercialHistory, setCommercialHistory] = useState<CommercialDecision[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -87,9 +113,17 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       setDurationMinutes(timeToMinutes(appointment.end_time) - timeToMinutes(appointment.start_time))
     }
     setCommercialOutcome(appointment?.commercial_outcome ?? '')
+    setCommercialDecisionDate(appointment?.commercial_outcome_at ? chileIsoDate(appointment.commercial_outcome_at) : chileIsoDate())
+    setCommercialNotes('')
+    setCommercialHistory([])
     setSelectedClient(appointment?.client ?? null)
     setNewClient(emptyClient)
   }, [appointment, initialDate, open])
+
+  useEffect(() => {
+    if (!open || !appointment) return
+    void loadCommercialHistory(appointment.id)
+  }, [appointment?.id, open])
 
   useEffect(() => {
     if (!open || !appointmentTypeId || !date) return
@@ -120,10 +154,15 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setDurationStep(settingMap.appointment_duration_step_minutes || 15)
     setMaxDuration(settingMap.appointment_max_duration_minutes || 240)
     if (!appointment) setDurationMinutes(appointmentTypes[0]?.duration_minutes || 45)
-    setNewClient((current) => ({
-      ...current,
-      client_type_id: current.client_type_id || customerTypes[0]?.id || '',
-    }))
+  }
+
+  async function loadCommercialHistory(appointmentId: string) {
+    const { data } = await supabase
+      .from('commercial_decision_history')
+      .select('id,previous_outcome,new_outcome,effective_date,notes,changed_at')
+      .eq('appointment_id', appointmentId)
+      .order('changed_at', { ascending: false })
+    setCommercialHistory((data ?? []) as CommercialDecision[])
   }
 
   async function searchClients() {
@@ -180,10 +219,8 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       setError('Selecciona un cliente existente o completa correctamente los datos del nuevo cliente.')
       return
     }
-    if ((allowOutOfSlot || allowOverbook) && !exceptionReason.trim()) {
-      setError('Debes indicar el motivo de la excepción.')
-      return
-    }
+    const storedExceptionReason = exceptionReason.trim()
+      || ((allowOutOfSlot || allowOverbook) ? DEFAULT_EXCEPTION_REASON : null)
 
     setLoading(true)
     if (isEdit && appointment) {
@@ -196,7 +233,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         p_internal_notes: notes || null,
         p_allow_out_of_slot: allowOutOfSlot,
         p_allow_overbook: allowOverbook,
-        p_exception_reason: exceptionReason || null,
+        p_exception_reason: storedExceptionReason,
       })
       if (updateError) setError(updateError.message)
       else onSaved('La cita fue actualizada y se programó el correo correspondiente.')
@@ -218,7 +255,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         p_internal_notes: notes || null,
         p_allow_out_of_slot: allowOutOfSlot,
         p_allow_overbook: allowOverbook,
-        p_exception_reason: exceptionReason || null,
+        p_exception_reason: storedExceptionReason,
       })
       if (createError) setError(createError.message)
       else onSaved('La cita fue creada y el correo informativo quedó en cola.')
@@ -228,17 +265,29 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
 
   async function saveCommercialOutcome() {
     if (!appointment) return
+    if (commercialOutcome && !commercialDecisionDate) {
+      setError('Selecciona la fecha efectiva de la decisión.')
+      return
+    }
     setLoading(true)
     setError('')
-    const { error: outcomeError } = await supabase.rpc('set_appointment_commercial_outcome', {
+    const { error: outcomeError } = await supabase.rpc('set_appointment_commercial_outcome_v2', {
       p_appointment_id: appointment.id,
       p_outcome: commercialOutcome || null,
+      p_effective_date: commercialOutcome ? commercialDecisionDate : null,
+      p_notes: commercialNotes.trim() || null,
     })
     setLoading(false)
     if (outcomeError) setError(outcomeError.message)
     else {
-      onSaved(commercialOutcome ? 'El resultado comercial quedó registrado y auditado.' : 'Se eliminó el resultado comercial.')
-      if (commercialOutcome === 'completed_sale') onCreateOrder({ ...appointment, commercial_outcome: commercialOutcome })
+      onSaved(commercialOutcome ? 'La decisión comercial y su fecha quedaron registradas en el historial.' : 'Se eliminó el resultado comercial actual.')
+      if (commercialOutcome === 'completed_sale') {
+        onCreateOrder({
+          ...appointment,
+          commercial_outcome: commercialOutcome,
+          commercial_outcome_at: `${commercialDecisionDate}T15:00:00.000Z`,
+        })
+      }
     }
   }
 
@@ -341,6 +390,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                     <label className="span-two">
                       Tipo de cliente
                       <select required={!selectedClient} value={newClient.client_type_id} onChange={(event) => setNewClient({ ...newClient, client_type_id: event.target.value })}>
+                        <option value="">Seleccionar tipo de cliente…</option>
                         {clientTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
                       </select>
                     </label>
@@ -427,8 +477,8 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                 </label>
                 {(allowOutOfSlot || allowOverbook) && (
                   <label>
-                    Motivo obligatorio de la excepción
-                    <input value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} required />
+                    Comentario de la excepción (opcional)
+                    <input value={exceptionReason} onChange={(event) => setExceptionReason(event.target.value)} placeholder="Agrega un contexto si es necesario" />
                   </label>
                 )}
               </div>
@@ -437,24 +487,65 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
 
           {appointment && selectedType?.category === 'sale' && appointment.status !== 'cancelled' && appointment.status !== 'no_show' && (
             <fieldset className="form-section">
-              <legend>Resultado de la cita de Venta</legend>
-              <p className="form-help">Regístralo una vez iniciada la cita. Este dato alimenta la efectividad comercial de Indicadores.</p>
+              <legend>Decisión de la venta</legend>
+              <p className="form-help">Puede registrarse al terminar la cita o actualizarse días después. Cada cambio conserva su fecha efectiva y trazabilidad.</p>
               <div className="form-grid two-columns">
                 <label>
-                  Resultado comercial
-                  <select value={commercialOutcome} onChange={(event) => setCommercialOutcome(event.target.value as CommercialOutcome | '')}>
+                  Estado comercial
+                  <select value={commercialOutcome} onChange={(event) => {
+                    const next = event.target.value as CommercialOutcome | ''
+                    setCommercialOutcome(next)
+                    if (next !== appointment.commercial_outcome) setCommercialDecisionDate(chileIsoDate())
+                  }}>
                     <option value="">Sin resultado</option>
-                    <option value="completed_sale">Venta concretada</option>
+                    <option value="potential_sale">Pendiente de decisión</option>
+                    <option value="completed_sale">Venta aceptada</option>
                     <option value="rejected_sale">Venta rechazada</option>
-                    <option value="potential_sale">Posible venta</option>
                   </select>
                 </label>
-                <div className="action-row align-end"><button type="button" className="btn btn-primary" disabled={loading} onClick={() => void saveCommercialOutcome()}>Guardar resultado</button></div>
+                {commercialOutcome && (
+                  <label>
+                    Fecha efectiva de la decisión
+                    <input
+                      type="date"
+                      min={appointment.appointment_date}
+                      max={chileIsoDate()}
+                      value={commercialDecisionDate}
+                      onChange={(event) => setCommercialDecisionDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                )}
+                {commercialOutcome && (
+                  <label className="span-two">
+                    Nota comercial (opcional)
+                    <input value={commercialNotes} onChange={(event) => setCommercialNotes(event.target.value)} placeholder="Ej.: confirmó por WhatsApp" />
+                  </label>
+                )}
+                <div className="action-row align-end"><button type="button" className="btn btn-primary" disabled={loading} onClick={() => void saveCommercialOutcome()}>Guardar decisión</button></div>
               </div>
+              {appointment.commercial_outcome && appointment.commercial_outcome_at && (
+                <div className="alert alert-info">
+                  Estado actual: <strong>{commercialDecisionLabel(appointment.commercial_outcome, chileIsoDate(appointment.commercial_outcome_at), appointment.appointment_date)}</strong>.
+                </div>
+              )}
+              {commercialHistory.length > 0 && (
+                <div>
+                  <h3>Historial de decisiones</h3>
+                  <ul className="simple-list">
+                    {commercialHistory.map((item) => (
+                      <li key={item.id}>
+                        <strong>{item.new_outcome && item.effective_date ? commercialDecisionLabel(item.new_outcome, item.effective_date, appointment.appointment_date) : 'Resultado eliminado'}</strong>
+                        <span>{new Date(item.changed_at).toLocaleString('es-CL')}{item.notes ? ` · ${item.notes}` : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {appointment.commercial_outcome === 'completed_sale' && (
                 <div className="alert alert-success order-cta">
-                  <span>{appointment.order_id ? 'Esta venta ya tiene un pedido vinculado.' : 'Venta concretada lista para convertirse en pedido.'}</span>
-                  <button type="button" className="btn btn-primary" onClick={() => onCreateOrder(appointment)}>{appointment.order_id ? 'Ver pedido' : 'Crear pedido'}</button>
+                  <span>{appointment.order_id ? 'Esta venta ya está registrada.' : 'Venta aceptada lista para registrar.'}</span>
+                  <button type="button" className="btn btn-primary" onClick={() => onCreateOrder(appointment)}>{appointment.order_id ? 'Ver venta' : 'Registrar venta'}</button>
                 </div>
               )}
             </fieldset>
@@ -499,4 +590,11 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       </section>
     </div>
   )
+}
+
+function commercialDecisionLabel(outcome: CommercialOutcome, effectiveDate: string, appointmentDate: string) {
+  if (outcome === 'potential_sale') return `Pendiente desde ${formatDate(effectiveDate)}`
+  if (outcome === 'rejected_sale') return `Rechazada el ${formatDate(effectiveDate)}`
+  const days = Math.max(0, Math.round((Date.parse(`${effectiveDate}T12:00:00Z`) - Date.parse(`${appointmentDate}T12:00:00Z`)) / 86_400_000))
+  return days === 0 ? 'Aceptada en la cita' : `Aceptada ${days} día${days === 1 ? '' : 's'} después`
 }

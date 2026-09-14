@@ -20,6 +20,15 @@ interface ReportForm {
   send_empty: boolean
 }
 
+interface PrintableAppointment {
+  appointment_date: string
+  start_time: string
+  end_time: string
+  status: AppointmentStatus
+  client: { first_name: string; last_name: string; phone: string } | null
+  appointment_type: { name: string } | null
+}
+
 const weekdays = [
   { value: 1, label: 'Lunes' },
   { value: 2, label: 'Martes' },
@@ -55,6 +64,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -187,6 +197,48 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
     onChanged('Reporte eliminado.')
   }
 
+  async function generatePdf(report: ScheduledReport) {
+    const preview = window.open('', '_blank', 'width=1100,height=800')
+    if (!preview) {
+      setError('El navegador bloqueó la vista previa. Habilita las ventanas emergentes e inténtalo nuevamente.')
+      return
+    }
+    preview.document.write('<p style="font-family:sans-serif;padding:24px">Preparando reporte…</p>')
+    setGeneratingId(report.id)
+    setError('')
+    setNotice('')
+
+    const range = reportDateRange(report.period_type)
+    let query = supabase
+      .from('appointments')
+      .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),appointment_type:appointment_types(name)')
+      .gte('appointment_date', range.from)
+      .lte('appointment_date', range.to)
+      .order('appointment_date')
+      .order('start_time')
+
+    if (report.appointment_type_ids?.length) query = query.in('appointment_type_id', report.appointment_type_ids)
+    if (report.statuses?.length) query = query.in('status', report.statuses)
+
+    const { data, error: reportError } = await query
+    setGeneratingId(null)
+    if (reportError) {
+      preview.close()
+      setError(reportError.message)
+      return
+    }
+
+    const appointments = (data ?? []) as unknown as PrintableAppointment[]
+    preview.document.open()
+    preview.document.write(reportDocument(report, appointments, range))
+    preview.document.close()
+    window.setTimeout(() => {
+      preview.focus()
+      preview.print()
+    }, 300)
+    setNotice('Vista previa generada. En el diálogo de impresión selecciona “Guardar como PDF”.')
+  }
+
   return (
     <section className="page-section">
       <div className="page-heading">
@@ -221,6 +273,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
               <option value="today">Agenda del mismo día</option>
               <option value="tomorrow">Agenda del día siguiente</option>
               <option value="week">Próximos 7 días</option>
+              <option value="fortnight">Próximos 14 días</option>
             </select>
           </label>
           <label className="span-two">Destinatarios<input required placeholder="correo1@dominio.cl, correo2@dominio.cl" value={form.recipients} onChange={(event) => setForm({ ...form, recipients: event.target.value })} /></label>
@@ -292,6 +345,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
                   <td><span className={`badge ${report.active ? 'badge-success' : 'badge-muted'}`}>{report.active ? 'Activo' : 'Inactivo'}</span></td>
                   <td>
                     <div className="table-actions">
+                      <button className="btn btn-primary btn-sm" type="button" disabled={generatingId === report.id} onClick={() => void generatePdf(report)}>{generatingId === report.id ? 'Generando…' : 'Generar PDF'}</button>
                       <button className="btn btn-secondary btn-sm" type="button" onClick={() => editReport(report)}>Editar</button>
                       <button className="btn btn-danger btn-sm" type="button" onClick={() => void deleteReport(report.id)}>Eliminar</button>
                     </div>
@@ -310,5 +364,96 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
 function periodLabel(period: ScheduledReport['period_type']) {
   if (period === 'today') return 'Mismo día'
   if (period === 'tomorrow') return 'Día siguiente'
+  if (period === 'fortnight') return 'Próximos 14 días'
   return 'Próximos 7 días'
+}
+
+function reportDateRange(period: ScheduledReport['period_type']) {
+  const today = chileIsoDate()
+  if (period === 'tomorrow') {
+    const tomorrow = addIsoDays(today, 1)
+    return { from: tomorrow, to: tomorrow }
+  }
+  if (period === 'week') return { from: today, to: addIsoDays(today, 6) }
+  if (period === 'fortnight') return { from: today, to: addIsoDays(today, 13) }
+  return { from: today, to: today }
+}
+
+function chileIsoDate() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+function addIsoDays(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function reportDocument(
+  report: ScheduledReport,
+  appointments: PrintableAppointment[],
+  range: { from: string; to: string },
+) {
+  const rows = appointments.map((appointment) => `
+    <tr>
+      <td>${escapeHtml(formatPdfDate(appointment.appointment_date))}</td>
+      <td>${escapeHtml(appointment.start_time.slice(0, 5))}</td>
+      <td>${escapeHtml(appointment.appointment_type?.name ?? '—')}</td>
+      <td>${escapeHtml(`${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || '—')}</td>
+      <td>${escapeHtml(appointment.client?.phone ?? '—')}</td>
+      <td>${escapeHtml(statusLabel(appointment.status))}</td>
+    </tr>
+  `).join('')
+
+  return `<!doctype html>
+  <html lang="es">
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(report.name)}</title>
+      <style>
+        @page { size: A4 landscape; margin: 12mm; }
+        body { color: #291f23; font-family: Arial, sans-serif; font-size: 11px; }
+        h1 { color: #7f3f52; font-size: 22px; margin: 0 0 4px; }
+        p { margin: 0 0 14px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid #ded5d8; padding: 7px 6px; text-align: left; }
+        th { background: #f3ecee; color: #5b2737; }
+        .empty { padding: 28px; text-align: center; }
+        .meta { color: #675b60; }
+      </style>
+    </head>
+    <body>
+      <h1>${escapeHtml(report.name)}</h1>
+      <p class="meta">${escapeHtml(periodLabel(report.period_type))} · ${escapeHtml(formatPdfDate(range.from))} al ${escapeHtml(formatPdfDate(range.to))} · ${appointments.length} cita${appointments.length === 1 ? '' : 's'}</p>
+      <table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Cliente</th><th>Teléfono</th><th>Estado</th></tr></thead>
+        <tbody>${rows || '<tr><td class="empty" colspan="6">No existen citas para los filtros seleccionados.</td></tr>'}</tbody>
+      </table>
+    </body>
+  </html>`
+}
+
+function formatPdfDate(value: string) {
+  return new Intl.DateTimeFormat('es-CL', { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${value}T12:00:00Z`))
+}
+
+function statusLabel(status: AppointmentStatus) {
+  return statuses.find((item) => item.value === status)?.label ?? status
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;',
+  })[character] ?? character)
 }

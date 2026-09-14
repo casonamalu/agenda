@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { chileIsoDate, commercialDecisionLabel } from '../lib/business'
 import { formatDate, formatTime } from '../lib/date'
 import { supabase } from '../lib/supabase'
 import type { Appointment, AppointmentType, Client, ClientType, CommercialOutcome, Profile } from '../types'
@@ -46,18 +47,6 @@ const emptyClient = {
 function timeToMinutes(value: string) {
   const [hours, minutes] = value.split(':').map(Number)
   return hours * 60 + minutes
-}
-
-function chileIsoDate(value: string | Date = new Date()) {
-  const date = typeof value === 'string' ? new Date(value) : value
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Santiago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date)
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
 }
 
 export function AppointmentModal({ open, profile, appointment, initialDate, onClose, onSaved, onCreateOrder }: Props) {
@@ -590,11 +579,4 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       </section>
     </div>
   )
-}
-
-function commercialDecisionLabel(outcome: CommercialOutcome, effectiveDate: string, appointmentDate: string) {
-  if (outcome === 'potential_sale') return `Pendiente desde ${formatDate(effectiveDate)}`
-  if (outcome === 'rejected_sale') return `Rechazada el ${formatDate(effectiveDate)}`
-  const days = Math.max(0, Math.round((Date.parse(`${effectiveDate}T12:00:00Z`) - Date.parse(`${appointmentDate}T12:00:00Z`)) / 86_400_000))
-  return days === 0 ? 'Aceptada en la cita' : `Aceptada ${days} día${days === 1 ? '' : 's'} después`
 }

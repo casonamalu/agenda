@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { orderPaymentTotal as paymentTotal, orderSaleTotal as saleTotal } from '../lib/business'
 import { formatClp, operationalPaymentMethods, orderCode, paymentMethodLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
 import type { CashMovement, Order, OrderPayment, PaymentMethod, Profile } from '../types'
@@ -249,14 +250,6 @@ export function Cash({ profile, refreshToken, onChanged }: Props) {
       )}
     </section>
   )
-}
-
-function saleTotal(order: Order | null) {
-  return Math.max(0, Number(order?.financials?.gross_sale_amount ?? 0) - Number(order?.financials?.discount_amount ?? 0))
-}
-
-function paymentTotal(order: Order | null) {
-  return order?.payments?.reduce((sum, item) => sum + Number(item.amount), 0) ?? 0
 }
 
 function localDateTime() {

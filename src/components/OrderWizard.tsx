@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { acceptedDecisionSummary, chileIsoDate } from '../lib/business'
 import { formatDate, toIsoDate } from '../lib/date'
 import { formatClp, productionRouteLabels } from '../lib/operations'
 import { supabase } from '../lib/supabase'
@@ -215,23 +216,9 @@ export function OrderWizard({
   )
 }
 
-function chileIsoDate(value: string) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Santiago',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date(value))
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
-}
-
 function decisionTiming(appointment: Appointment) {
   const acceptedDate = appointment.commercial_outcome_at
     ? chileIsoDate(appointment.commercial_outcome_at)
     : appointment.appointment_date
-  const days = Math.max(0, Math.round(
-    (Date.parse(`${acceptedDate}T12:00:00Z`) - Date.parse(`${appointment.appointment_date}T12:00:00Z`)) / 86_400_000,
-  ))
-  return days === 0 ? 'Venta aceptada durante la cita' : `Venta aceptada ${days} día${days === 1 ? '' : 's'} después`
+  return acceptedDecisionSummary(acceptedDate, appointment.appointment_date)
 }

@@ -1,0 +1,57 @@
+name: Pruebas automáticas
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '0 11 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: automated-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Reglas, tipos y compilación
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Probar reglas críticas
+        run: npm test
+      - name: Validar TypeScript
+        run: npm run typecheck
+      - name: Compilar aplicación
+        run: npm run build
+
+  production-smoke:
+    name: Disponibilidad de producción
+    if: github.event_name != 'pull_request'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verificar página y archivo JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin="https://agenda-casonamalu.vercel.app"
+          curl --fail --silent --show-error --retry 6 --retry-all-errors "$origin/" --output /tmp/agenda.html
+          grep --fixed-strings '<div id="root"></div>' /tmp/agenda.html
+          asset_path="$(sed -n 's/.*src="\([^"]*index-[^"]*\.js\)".*/\1/p' /tmp/agenda.html | head -n 1)"
+          test -n "$asset_path"
+          curl --fail --silent --show-error --retry 6 --retry-all-errors "$origin$asset_path" --output /dev/null

@@ -27,6 +27,7 @@ interface PrintableAppointment {
   end_time: string
   status: AppointmentStatus
   client: { first_name: string; last_name: string; phone: string } | null
+  participants: Array<{ client: { first_name: string; last_name: string; phone: string } | null }>
   appointment_type: { name: string } | null
 }
 
@@ -212,7 +213,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
     const range = reportDateRange(report.period_type)
     let query = supabase
       .from('appointments')
-      .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),appointment_type:appointment_types(name)')
+      .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
       .gte('appointment_date', range.from)
       .lte('appointment_date', range.to)
       .order('appointment_date')
@@ -374,16 +375,20 @@ function reportDocument(
   appointments: PrintableAppointment[],
   range: { from: string; to: string },
 ) {
-  const rows = appointments.map((appointment) => `
+  const rows = appointments.map((appointment) => {
+    const clients = [appointment.client, ...(appointment.participants ?? []).map((item) => item.client)].filter(Boolean)
+    const names = clients.map((client) => `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim()).join(' + ')
+    const phones = clients.map((client) => client?.phone ?? '').filter(Boolean).join(' · ')
+    return `
     <tr>
       <td>${escapeHtml(formatPdfDate(appointment.appointment_date))}</td>
       <td>${escapeHtml(appointment.start_time.slice(0, 5))}</td>
       <td>${escapeHtml(appointment.appointment_type?.name ?? '—')}</td>
-      <td>${escapeHtml(`${appointment.client?.first_name ?? ''} ${appointment.client?.last_name ?? ''}`.trim() || '—')}</td>
-      <td>${escapeHtml(appointment.client?.phone ?? '—')}</td>
+      <td>${escapeHtml(names || '—')}</td>
+      <td>${escapeHtml(phones || '—')}</td>
       <td>${escapeHtml(statusLabel(appointment.status))}</td>
     </tr>
-  `).join('')
+  `}).join('')
 
   return `<!doctype html>
   <html lang="es">

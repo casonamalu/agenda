@@ -9,6 +9,7 @@ import {
   orderSaleTotal,
   reportDateRange,
 } from '../src/lib/business.ts'
+import { GROUP_SALE_DURATION_MINUTES, appointmentClientNames, groupSaleDuration } from '../src/lib/appointments.ts'
 
 test('el período de 14 días incluye hoy y los 13 días siguientes', () => {
   assert.deepEqual(reportDateRange('fortnight', '2026-09-14'), {
@@ -55,4 +56,18 @@ test('calcula venta, pagos, reversos y saldo sin permitir saldo negativo', () =>
     payments: [{ amount: 150_000 }],
   }
   assert.equal(orderBalance(overpaid), 0)
+})
+
+test('una cita de venta para dos personas ocupa 90 minutos y sigue siendo una cita', () => {
+  assert.equal(GROUP_SALE_DURATION_MINUTES, 90)
+  assert.equal(groupSaleDuration(true, 45), 90)
+  assert.equal(groupSaleDuration(false, 45), 45)
+})
+
+test('muestra a la clienta principal y a la acompañante en una sola cita', () => {
+  const appointment = {
+    client: { first_name: 'Ana', last_name: 'Pérez' },
+    participants: [{ client: { first_name: 'Elena', last_name: 'Pérez' } }],
+  }
+  assert.equal(appointmentClientNames(appointment as never), 'Ana Pérez + Elena Pérez')
 })

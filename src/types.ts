@@ -100,6 +100,19 @@ export interface Appointment {
   updated_at: string
   client?: Client
   appointment_type?: AppointmentType
+  participants?: AppointmentParticipant[]
+}
+
+export interface AppointmentParticipant {
+  id: string
+  appointment_id: string
+  client_id: string
+  position: number
+  commercial_outcome: CommercialOutcome | null
+  commercial_outcome_at: string | null
+  commercial_outcome_by: string | null
+  order_id: string | null
+  client?: Client
 }
 
 export interface OrderFinancials {

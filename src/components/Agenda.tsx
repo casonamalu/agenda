@@ -14,6 +14,7 @@ import {
   toIsoDate,
 } from '../lib/date'
 import { supabase } from '../lib/supabase'
+import { appointmentClientNames, appointmentClients } from '../lib/appointments'
 import type { Appointment, AppointmentType, CalendarView } from '../types'
 
 interface Props {
@@ -53,6 +54,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
     const channel = supabase
       .channel('agenda-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => void loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointment_participants' }, () => void loadData())
       .subscribe()
     return () => { void supabase.removeChannel(channel) }
   }, [range.from, range.to, refreshToken])
@@ -79,7 +81,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
     const [appointmentsResult, typesResult] = await Promise.all([
       supabase
         .from('appointments')
-        .select('*, client:clients(*, client_type:client_types(*)), appointment_type:appointment_types(*)')
+        .select('*, client:clients(*, client_type:client_types(*)), participants:appointment_participants(*, client:clients(*, client_type:client_types(*))), appointment_type:appointment_types(*)')
         .gte('appointment_date', range.from)
         .lte('appointment_date', range.to)
         .order('appointment_date')
@@ -102,7 +104,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
     while (!searchError) {
       const { data, error: pageError } = await supabase
         .from('appointments')
-        .select('*, client:clients(*, client_type:client_types(*)), appointment_type:appointment_types(*)')
+        .select('*, client:clients(*, client_type:client_types(*)), participants:appointment_participants(*, client:clients(*, client_type:client_types(*))), appointment_type:appointment_types(*)')
         .order('appointment_date', { ascending: false })
         .order('start_time')
         .range(page * pageSize, page * pageSize + pageSize - 1)
@@ -121,13 +123,9 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       const normalized = query.toLocaleLowerCase('es-CL').replace(/^@/, '')
       const compactDate = normalized.replace(/\//g, '-')
       setGlobalResults(allAppointments.filter((appointment) => {
-        const client = appointment.client
+        const clients = appointmentClients(appointment)
         const values = [
-          client?.first_name,
-          client?.last_name,
-          client?.email,
-          client?.phone,
-          client?.instagram,
+          ...clients.flatMap((client) => [client.first_name, client.last_name, client.email, client.phone, client.instagram]),
           appointment.appointment_type?.name,
           appointment.appointment_date,
           formatDate(appointment.appointment_date),
@@ -280,7 +278,7 @@ function GlobalSearchResults({ appointments, loading, onOpen }: {
           ? <div className="empty-state">No se encontraron citas con estos criterios.</div>
           : appointments.map((appointment) => (
             <button type="button" className="global-result-row" key={appointment.id} onClick={() => onOpen(appointment)}>
-              <span><strong>{appointment.client?.first_name} {appointment.client?.last_name}</strong><small>{appointment.client?.email} · {appointment.client?.phone}</small></span>
+              <span><strong>{appointmentClientNames(appointment)}</strong><small>{appointmentClients(appointment).map((client) => client.email).join(' · ')}</small></span>
               <span><strong>{appointment.appointment_type?.name}</strong><small>{statusLabel(appointment.status)}</small></span>
               <span><strong>{formatDate(appointment.appointment_date)}</strong><small>{formatTime(appointment.start_time)}–{formatTime(appointment.end_time)}</small></span>
             </button>
@@ -300,8 +298,9 @@ function AppointmentCard({ appointment, onOpen }: { appointment: Appointment; on
       onClick={() => onOpen(appointment)}
     >
       <span className="appointment-time">{formatTime(appointment.start_time)}–{formatTime(appointment.end_time)}</span>
-      <strong>{appointment.client?.first_name} {appointment.client?.last_name}</strong>
+      <strong>{appointmentClientNames(appointment)}</strong>
       <span>{type?.name ?? 'Cita'} · {statusLabel(appointment.status)}</span>
+      {(appointment.participants?.length ?? 0) > 0 && <em className="group-label">2 personas</em>}
       {appointment.is_overbook && <em>Sobrecupo</em>}
     </button>
   )
@@ -383,7 +382,7 @@ function MonthView({ cursor, appointments, onOpen, onNew }: { cursor: Date; appo
                     style={{ '--appointment-color': appointment.appointment_type?.color ?? '#7f3f52' } as React.CSSProperties}
                     onClick={() => onOpen(appointment)}
                   >
-                    {formatTime(appointment.start_time)} {appointment.client?.first_name}
+                    {formatTime(appointment.start_time)} {appointment.client?.first_name}{appointment.participants?.length ? ' +1' : ''}
                   </button>
                 ))}
                 {dayAppointments.length > 3 && <small>+{dayAppointments.length - 3} más</small>}

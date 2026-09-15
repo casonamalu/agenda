@@ -46,7 +46,7 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
     const [appointmentsResult, capacityResult] = await Promise.all([
       supabase
         .from('appointments')
-        .select('*, client:clients(*, client_type:client_types(*)), appointment_type:appointment_types(*)')
+        .select('*, client:clients(*, client_type:client_types(*)), participants:appointment_participants(*, client:clients(*)), appointment_type:appointment_types(*)')
         .gte('appointment_date', from)
         .lte('appointment_date', to),
       supabase.rpc('get_capacity_by_type_in_range', { p_from: from, p_to: to }),
@@ -113,9 +113,13 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
     })
 
     const sales = active.filter((appointment) => appointment.appointment_type?.category === 'sale')
-    const completedSales = sales.filter((appointment) => appointment.commercial_outcome === 'completed_sale').length
-    const rejectedSales = sales.filter((appointment) => appointment.commercial_outcome === 'rejected_sale').length
-    const potentialSales = sales.filter((appointment) => appointment.commercial_outcome === 'potential_sale').length
+    const salePeople = sales.flatMap((appointment) => [
+      { outcome: appointment.commercial_outcome, orderId: appointment.order_id },
+      ...(appointment.participants ?? []).map((participant) => ({ outcome: participant.commercial_outcome, orderId: participant.order_id })),
+    ])
+    const completedSales = salePeople.filter((person) => person.outcome === 'completed_sale').length
+    const rejectedSales = salePeople.filter((person) => person.outcome === 'rejected_sale').length
+    const potentialSales = salePeople.filter((person) => person.outcome === 'potential_sale').length
     const evaluatedSales = completedSales + rejectedSales
 
     return {
@@ -129,13 +133,13 @@ export function Dashboard({ refreshToken }: { refreshToken: number }) {
       cancelled: appointments.filter((item) => item.status === 'cancelled').length,
       noShow: appointments.filter((item) => item.status === 'no_show').length,
       sales: {
-        total: sales.length,
+        total: salePeople.length,
         completed: completedSales,
         rejected: rejectedSales,
         potential: potentialSales,
-        pending: sales.length - completedSales - rejectedSales - potentialSales,
+        pending: salePeople.length - completedSales - rejectedSales - potentialSales,
         effectiveness: evaluatedSales ? Math.round((completedSales / evaluatedSales) * 100) : 0,
-        withoutOrder: sales.filter((appointment) => appointment.commercial_outcome === 'completed_sale' && !appointment.order_id).length,
+        withoutOrder: salePeople.filter((person) => person.outcome === 'completed_sale' && !person.orderId).length,
       },
     }
   }, [appointments, cursor])

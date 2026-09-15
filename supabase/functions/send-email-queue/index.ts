@@ -159,7 +159,7 @@ async function buildEmail(
   const [{ data: appointment, error: appointmentError }, { data: template, error: templateError }] = await Promise.all([
     supabase
       .from('appointments')
-      .select('appointment_date,start_time,end_time,client:clients(first_name,last_name,email),appointment_type:appointment_types(name,duration_minutes)')
+      .select('appointment_date,start_time,end_time,client:clients(first_name,last_name,email),participants:appointment_participants(client:clients(first_name,last_name,email)),appointment_type:appointment_types(name,duration_minutes)')
       .eq('id', item.appointment_id)
       .single(),
     supabase.from('email_templates').select('subject,body_html,active').eq('template_key', item.kind).single(),
@@ -167,7 +167,14 @@ async function buildEmail(
   if (appointmentError || !appointment) throw new Error('No fue posible cargar la cita')
   if (templateError || !template?.active) throw new Error(`Plantilla ${item.kind} no disponible`)
 
-  const client = Array.isArray(appointment.client) ? appointment.client[0] : appointment.client
+  const primaryClient = Array.isArray(appointment.client) ? appointment.client[0] : appointment.client
+  const participantClients = (appointment.participants ?? []).flatMap((participant) => {
+    const client = Array.isArray(participant.client) ? participant.client[0] : participant.client
+    return client ? [client] : []
+  })
+  const client = [primaryClient, ...participantClients].find(
+    (candidate) => candidate?.email?.toLowerCase() === item.recipient.toLowerCase(),
+  ) ?? primaryClient
   const appointmentType = Array.isArray(appointment.appointment_type) ? appointment.appointment_type[0] : appointment.appointment_type
   const timezone = stringSetting(settingsMap, 'timezone', 'America/Santiago')
   const startTime = String(appointment.start_time).slice(0, 5)
@@ -225,7 +232,7 @@ async function buildReportEmail(
 
   let query = supabase
     .from('appointments')
-    .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),appointment_type:appointment_types(name)')
+    .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
     .gte('appointment_date', from)
     .lte('appointment_date', to)
     .order('appointment_date')
@@ -260,13 +267,18 @@ async function buildReportEmail(
 
   const rows = (appointments ?? []).map((appointment) => {
     const client = Array.isArray(appointment.client) ? appointment.client[0] : appointment.client
+    const participantClients = (appointment.participants ?? []).flatMap((participant) => {
+      const participantClient = Array.isArray(participant.client) ? participant.client[0] : participant.client
+      return participantClient ? [participantClient] : []
+    })
+    const clients = [client, ...participantClients].filter(Boolean)
     const type = Array.isArray(appointment.appointment_type) ? appointment.appointment_type[0] : appointment.appointment_type
     const values: Record<string, string> = {
       date: formatReportDate(appointment.appointment_date, timezone),
       time: `${String(appointment.start_time).slice(0, 5)}–${String(appointment.end_time).slice(0, 5)}`,
       appointment_type: type?.name ?? '',
-      client_name: `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim(),
-      phone: client?.phone ?? '',
+      client_name: clients.map((person) => `${person?.first_name ?? ''} ${person?.last_name ?? ''}`.trim()).join(' + '),
+      phone: clients.map((person) => person?.phone ?? '').filter(Boolean).join(' · '),
       status: statusLabel(appointment.status),
     }
     return `<tr>${visibleFields.map((field) => `<td style="padding:8px;border-bottom:1px solid #e4dcd7">${escapeHtml(values[field.key] ?? '')}</td>`).join('')}</tr>`

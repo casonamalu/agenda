@@ -101,6 +101,7 @@ small { color: var(--muted); }
 .appointment-card:hover { box-shadow: 0 8px 22px rgba(69,48,40,.08); transform: translateY(-1px); }
 .appointment-card > span { color: var(--muted); font-size: 13px; }
 .appointment-card em { color: var(--danger); font-style: normal; font-size: 11px; font-weight: 800; }
+.appointment-card .group-label { color: var(--primary); background: #f6e9ed; border-radius: 999px; padding: 4px 8px; white-space: nowrap; }
 .appointment-time { color: var(--text) !important; font-weight: 800; }
 .status-cancelled { opacity: .6; text-decoration: line-through; }
 .status-no_show { background: #fff7ec; }
@@ -164,6 +165,19 @@ small { color: var(--muted); }
 .selected-client span { color: var(--muted); font-size: 12px; }
 .section-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--muted); font-size: 11px; }
 .section-divider::before, .section-divider::after { content: ''; height: 1px; background: var(--line); flex: 1; }
+.companion-section { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 16px; }
+.companion-toggle { align-items: flex-start; padding: 12px; border: 1px solid #dec8cf; border-radius: 12px; background: #fdf8fa; }
+.companion-toggle span { display: grid; gap: 3px; }
+.companion-toggle small { color: var(--muted); font-weight: 400; }
+.companion-card { display: grid; gap: 14px; margin-top: 12px; padding: 16px; border-radius: 14px; background: #faf7f5; border: 1px solid var(--line); }
+.participant-heading, .participant-summary { display: flex; gap: 10px; align-items: center; }
+.participant-heading > span, .participant-summary > span { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%; background: var(--primary); color: #fff; font-weight: 800; }
+.participant-heading > div, .participant-summary > div { display: grid; }
+.participant-heading small, .participant-summary small { color: var(--muted); }
+.participant-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.participant-summary { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: #faf7f5; min-width: 0; }
+.participant-summary small { overflow-wrap: anywhere; }
+.participant-decision { border-color: #dec8cf; }
 .exception-box { margin-top: 14px; padding: 13px; border-radius: 12px; background: #fff8ea; border: 1px solid #eddaa9; display: grid; gap: 10px; }
 .check-row { display: flex; align-items: center; gap: 8px; }
 .check-row input { width: auto; }
@@ -400,6 +414,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
   .scheduled-list article, .order-cta { align-items: stretch; flex-direction: column; }
   .wizard-actions { position: sticky; bottom: 67px; z-index: 20; margin: 0 -18px -18px; padding: 12px 18px; background: rgba(255,255,255,.97); border-top: 1px solid var(--line); }
   .product-check-grid, .commercial-kpis { grid-template-columns: 1fr; }
+  .participant-summary-grid { grid-template-columns: 1fr; }
 }
 
 @media print {

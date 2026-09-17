@@ -253,8 +253,16 @@ export interface EmailQueueItem {
   status: 'pending' | 'processing' | 'sent' | 'retry' | 'failed' | 'cancelled'
   attempts: number
   last_error: string | null
+  provider_message_id: string | null
   sent_at: string | null
   created_at: string
+  appointment?: {
+    appointment_date: string
+    start_time: string
+    end_time: string
+    status: AppointmentStatus
+    client: Pick<Client, 'first_name' | 'last_name'> | null
+  } | null
 }
 
 export interface ScheduledReport {

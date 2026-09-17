@@ -96,6 +96,7 @@ small { color: var(--muted); }
 .date-navigation strong { text-transform: capitalize; }
 .filter-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
 .one-filter { grid-template-columns: minmax(260px, 500px); }
+.email-filters { grid-template-columns: minmax(260px, 2fr) repeat(2, minmax(170px, 1fr)); }
 .client-filters { grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(130px, 1fr)); }
 
 .day-view, .table-card, .chart-card, .settings-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 26px rgba(69,48,40,.05); }
@@ -213,8 +214,11 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .badge-muted, .badge-cancelled { background: #eee; color: #666; }
 .badge-failed { background: #f9dddd; color: #8c2d2d; }
 .badge-retry, .badge-pending { background: #fff0d6; color: #805110; }
+.badge-processing { background: #e4ecf7; color: #315679; }
 .badge-warning { background: #fff0d6; color: #805110; }
 .table-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.table-secondary { display: block; margin-top: 4px; color: var(--muted); }
+.email-recipient { overflow-wrap: anywhere; max-width: 240px; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; }
 .kpi-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 8px; }

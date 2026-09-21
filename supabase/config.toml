@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.send-email-queue]
 verify_jwt = false
+
+[functions.telegram-assistant]
+verify_jwt = false

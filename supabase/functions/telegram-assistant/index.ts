@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
-import { type AgendaIntent, parseTelegramIntent } from './intent.ts'
+import { clientSearchTokens, matchesClientName, type AgendaIntent, parseTelegramIntent } from './intent.ts'
 
 type TelegramUser = {
   id: number
@@ -177,12 +177,24 @@ async function searchClients(chatId: number, rawTerm: string, nextAppointment: b
     return
   }
 
-  const { data, error } = await supabase
+  const tokens = clientSearchTokens(term)
+  const isEmail = term.includes('@')
+  const isPhone = /^[+\d\s()-]+$/.test(term)
+  const filters = isEmail
+    ? `email.ilike.%${term}%`
+    : isPhone
+      ? `phone.ilike.%${term.replace(/[^+\d]/g, '')}%`
+      : tokens.flatMap((token) => [
+        `first_name.ilike.%${token}%`,
+        `last_name.ilike.%${token}%`,
+      ]).join(',')
+
+  const { data: candidates, error } = await supabase
     .from('clients')
     .select('id,first_name,last_name,email,phone')
-    .or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`)
+    .or(filters)
     .order('last_name')
-    .limit(10)
+    .limit(isEmail || isPhone ? 10 : 100)
 
   if (error) {
     console.error('Error buscando clientes', error)
@@ -190,7 +202,11 @@ async function searchClients(chatId: number, rawTerm: string, nextAppointment: b
     return
   }
 
-  if (!data?.length) {
+  const data = (candidates ?? [])
+    .filter((client) => isEmail || isPhone || matchesClientName(client.first_name, client.last_name, term))
+    .slice(0, 10)
+
+  if (!data.length) {
     await sendMessage(chatId, `No encontré clientes para “${term}”.`)
     return
   }

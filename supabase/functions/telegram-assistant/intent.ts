@@ -89,6 +89,19 @@ export function normalizeText(value: string) {
   return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
 }
 
+export function clientSearchTokens(value: string) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9@+._\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 2)
+}
+
+export function matchesClientName(firstName: string, lastName: string, term: string) {
+  const fullName = normalizeText(`${firstName} ${lastName}`).replace(/[^a-z0-9\s-]/g, ' ')
+  const tokens = clientSearchTokens(term)
+  return tokens.length > 0 && tokens.every((token) => fullName.includes(token))
+}
+
 function extractPeriod(text: string, today: string) {
   if (/\b(pasado manana|pasado mañana)\b/.test(text)) {
     const date = addDays(today, 2)

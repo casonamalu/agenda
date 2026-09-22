@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parseTelegramIntent } from '../supabase/functions/telegram-assistant/intent.ts'
+import { matchesClientName, parseTelegramIntent } from '../supabase/functions/telegram-assistant/intent.ts'
 
 const today = '2026-09-21'
 
@@ -56,6 +56,17 @@ test('extrae nombres para búsqueda y próxima cita', () => {
     term: 'maria@gmail.com',
     nextAppointment: false,
   })
+  assert.deepEqual(parseTelegramIntent('cuando viene ana maria pichara', today), {
+    kind: 'search',
+    term: 'ana maria pichara',
+    nextAppointment: true,
+  })
+})
+
+test('encuentra nombres completos aunque estén separados y tengan tildes', () => {
+  assert.equal(matchesClientName('Ana María', 'Pichara', 'ana maria pichara'), true)
+  assert.equal(matchesClientName('Ana María', 'Pichara', 'pichara ana'), true)
+  assert.equal(matchesClientName('Ana María', 'Pichara', 'ana gonzalez'), false)
 })
 
 test('los botones sin datos solicitan la información faltante', () => {

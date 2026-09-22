@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { type AgendaIntent, parseTelegramIntent } from './intent.ts'
 
 type TelegramUser = {
   id: number
@@ -75,7 +76,6 @@ async function handleMessage(message: TelegramMessage) {
 
   const chatId = String(message.chat.id)
   const text = (message.text ?? '').trim()
-  const normalized = normalize(text)
 
   if (!isAuthorized(chatId)) {
     await sendMessage(
@@ -92,37 +92,24 @@ async function handleMessage(message: TelegramMessage) {
     return
   }
 
-  if (normalized === '/start' || normalized === '/ayuda' || normalized === 'ayuda') {
-    await sendMessage(message.chat.id, helpText())
-    return
+  const intent = parseTelegramIntent(text, localDate(0))
+  if (intent.kind === 'help') {
+    await sendMessage(message.chat.id, helpText(), mainKeyboard())
+  } else if (intent.kind === 'agenda') {
+    await sendAgenda(message.chat.id, intent)
+  } else if (intent.kind === 'search') {
+    await searchClients(message.chat.id, intent.term, intent.nextAppointment)
+  } else if (intent.kind === 'search_guide') {
+    await sendMessage(message.chat.id, 'Escribe el nombre, correo o teléfono. Por ejemplo:\n“Buscar a Daniela Pérez”\n“¿Cuándo viene Daniela?”\n“/buscar daniela@gmail.com”')
+  } else if (intent.kind === 'date_guide') {
+    await sendMessage(message.chat.id, 'Escribe la fecha como prefieras. Por ejemplo:\n“Citas del próximo viernes”\n“Agenda del 24 de septiembre”\n“Entregas de octubre”')
+  } else {
+    await sendMessage(
+      message.chat.id,
+      'No alcancé a entenderlo. Puedes escribir “citas de hoy”, “próxima cita de Daniela” o usar uno de los botones.',
+      mainKeyboard(),
+    )
   }
-
-  if (isTodayIntent(normalized)) {
-    await sendAgenda(message.chat.id, localDate(0), 'hoy')
-    return
-  }
-
-  if (isTomorrowIntent(normalized)) {
-    await sendAgenda(message.chat.id, localDate(1), 'mañana')
-    return
-  }
-
-  const requestedDate = extractDate(text)
-  if (requestedDate) {
-    await sendAgenda(message.chat.id, requestedDate, requestedDate)
-    return
-  }
-
-  const searchTerm = extractSearchTerm(text)
-  if (searchTerm) {
-    await searchClients(message.chat.id, searchTerm)
-    return
-  }
-
-  await sendMessage(
-    message.chat.id,
-    'No entendí la solicitud. Escribe /ayuda para ver ejemplos disponibles.',
-  )
 }
 
 function isAuthorized(chatId: string) {
@@ -133,12 +120,14 @@ function isAuthorized(chatId: string) {
   return allowed.includes(chatId)
 }
 
-async function sendAgenda(chatId: number, date: string, label: string) {
+async function sendAgenda(chatId: number, intent: AgendaIntent) {
   const { data, error } = await supabase
     .from('appointments')
-    .select('appointment_date,start_time,end_time,status,is_overbook,client:clients(first_name,last_name,email,phone),participants:appointment_participants(client:clients(first_name,last_name,email,phone)),appointment_type:appointment_types(name)')
-    .eq('appointment_date', date)
+    .select('appointment_date,start_time,end_time,status,is_overbook,client:clients(first_name,last_name,email,phone),participants:appointment_participants(client_id,client:clients(first_name,last_name,email,phone)),appointment_type:appointment_types(name,category)')
+    .gte('appointment_date', intent.startDate)
+    .lte('appointment_date', intent.endDate)
     .neq('status', 'cancelled')
+    .order('appointment_date')
     .order('start_time')
 
   if (error) {
@@ -147,9 +136,16 @@ async function sendAgenda(chatId: number, date: string, label: string) {
     return
   }
 
-  const appointments = (data ?? []) as unknown as AppointmentRow[]
+  const appointments = ((data ?? []) as unknown as AppointmentRow[]).filter((appointment) => {
+    const type = one(appointment.appointment_type) as Record<string, unknown> | null
+    if (intent.category && type?.category !== intent.category) return false
+    const start = shortTime(appointment.start_time)
+    if (intent.timeFrom && start < intent.timeFrom) return false
+    if (intent.timeTo && start >= intent.timeTo) return false
+    return true
+  })
   if (!appointments.length) {
-    await sendMessage(chatId, `No hay citas agendadas para ${label}.`)
+    await sendMessage(chatId, `No hay citas que coincidan con ${intent.label}.`, mainKeyboard())
     return
   }
 
@@ -164,13 +160,17 @@ async function sendAgenda(chatId: number, date: string, label: string) {
       .map((client) => `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim())
       .join(' + ')
     const overbook = appointment.is_overbook ? ' · sobrecupo' : ''
-    return `${index + 1}. ${shortTime(appointment.start_time)}–${shortTime(appointment.end_time)} · ${type?.name ?? 'Cita'}\n${names || 'Cliente sin nombre'}${overbook}`
+    const date = intent.startDate === intent.endDate ? '' : `${shortDate(appointment.appointment_date)} · `
+    return `${index + 1}. ${date}${shortTime(appointment.start_time)}–${shortTime(appointment.end_time)} · ${type?.name ?? 'Cita'}\n${names || 'Cliente sin nombre'}${overbook}`
   })
 
-  await sendLongMessage(chatId, `Agenda ${label} (${formatDate(date)})\n\n${lines.join('\n\n')}`)
+  const heading = intent.startDate === intent.endDate
+    ? `Agenda ${intent.label} (${formatDate(intent.startDate)})`
+    : `Agenda de ${intent.label}`
+  await sendLongMessage(chatId, `${heading}\n\n${lines.join('\n\n')}`)
 }
 
-async function searchClients(chatId: number, rawTerm: string) {
+async function searchClients(chatId: number, rawTerm: string, nextAppointment: boolean) {
   const term = rawTerm.trim().replace(/[,%()]/g, '')
   if (term.length < 2) {
     await sendMessage(chatId, 'Escribe al menos 2 caracteres para buscar.')
@@ -195,10 +195,64 @@ async function searchClients(chatId: number, rawTerm: string) {
     return
   }
 
-  const lines = data.map((client, index) =>
-    `${index + 1}. ${client.first_name} ${client.last_name}\n${client.email} · ${client.phone}`
-  )
+  const nextByClient = nextAppointment ? await loadNextAppointments(data.map((client) => client.id)) : new Map()
+  const lines = data.map((client, index) => {
+    const next = nextByClient.get(client.id)
+    const appointmentLine = next
+      ? `\nPróxima cita: ${formatDate(next.appointment_date)} a las ${shortTime(next.start_time)} · ${next.type}`
+      : nextAppointment ? '\nSin próximas citas agendadas' : ''
+    return `${index + 1}. ${client.first_name} ${client.last_name}\n${client.email} · ${client.phone}${appointmentLine}`
+  })
   await sendLongMessage(chatId, `Resultados para “${term}”\n\n${lines.join('\n\n')}`)
+}
+
+async function loadNextAppointments(clientIds: string[]) {
+  const nextByClient = new Map<string, { appointment_date: string; start_time: string; type: string }>()
+  if (!clientIds.length) return nextByClient
+
+  const [{ data: primary }, { data: participantLinks }] = await Promise.all([
+    supabase
+      .from('appointments')
+      .select('id,client_id,appointment_date,start_time,appointment_type:appointment_types(name)')
+      .in('client_id', clientIds)
+      .gte('appointment_date', localDate(0))
+      .neq('status', 'cancelled')
+      .order('appointment_date')
+      .order('start_time'),
+    supabase.from('appointment_participants').select('appointment_id,client_id').in('client_id', clientIds),
+  ])
+
+  const participantAppointmentIds = [...new Set((participantLinks ?? []).map((link) => link.appointment_id))]
+  const { data: shared } = participantAppointmentIds.length
+    ? await supabase
+      .from('appointments')
+      .select('id,client_id,appointment_date,start_time,appointment_type:appointment_types(name)')
+      .in('id', participantAppointmentIds)
+      .gte('appointment_date', localDate(0))
+      .neq('status', 'cancelled')
+      .order('appointment_date')
+      .order('start_time')
+    : { data: [] }
+
+  for (const appointment of primary ?? []) {
+    if (!nextByClient.has(appointment.client_id)) nextByClient.set(appointment.client_id, appointmentSummary(appointment))
+  }
+  const sharedById = new Map((shared ?? []).map((appointment) => [appointment.id, appointment]))
+  for (const link of participantLinks ?? []) {
+    if (nextByClient.has(link.client_id)) continue
+    const appointment = sharedById.get(link.appointment_id)
+    if (appointment) nextByClient.set(link.client_id, appointmentSummary(appointment))
+  }
+  return nextByClient
+}
+
+function appointmentSummary(appointment: Record<string, any>) {
+  const type = one(appointment.appointment_type) as Record<string, unknown> | null
+  return {
+    appointment_date: appointment.appointment_date as string,
+    start_time: appointment.start_time as string,
+    type: String(type?.name ?? 'Cita'),
+  }
 }
 
 function helpText() {
@@ -206,40 +260,15 @@ function helpText() {
     'Asistente Agenda Casona Malú',
     '',
     'Consultas disponibles:',
-    '• “¿Cuáles son las citas de hoy?”',
-    '• “Agenda de mañana”',
-    '• /fecha 25-09-2026',
-    '• /buscar nombre, correo o teléfono',
+    '• “¿Cuáles son las citas de hoy después de las 3?”',
+    '• “Entregas del próximo viernes”',
+    '• “Pruebas de esta semana”',
+    '• “¿Cuándo viene Daniela?”',
+    '• “Busca a María González”',
+    '• “Agenda del 25 de septiembre”',
     '',
-    'Las acciones que cambian datos se habilitarán con confirmación explícita después de validar este chat.',
+    'Las consultas son inmediatas. Las acciones que cambien datos siempre pedirán confirmación.',
   ].join('\n')
-}
-
-function isTodayIntent(value: string) {
-  return value === '/hoy' || value.includes('citas de hoy') || value.includes('agenda de hoy') ||
-    value.includes('citas para hoy') || value.includes('agenda para hoy')
-}
-
-function isTomorrowIntent(value: string) {
-  return value === '/manana' || value.includes('citas de manana') || value.includes('agenda de manana') ||
-    value.includes('citas para manana') || value.includes('agenda para manana')
-}
-
-function extractSearchTerm(value: string) {
-  const match = value.match(/^\/(?:buscar|cliente)\s+(.+)$/i) ?? value.match(/^buscar\s+(.+)$/i)
-  return match?.[1]?.trim() ?? null
-}
-
-function extractDate(value: string) {
-  const match = value.match(/(?:\/fecha\s+)?(\d{4})-(\d{2})-(\d{2})/) ??
-    value.match(/(?:\/fecha\s+)?(\d{1,2})[-/]([0-1]?\d)[-/](\d{4})/)
-  if (!match) return null
-
-  const iso = match[1].length === 4
-    ? `${match[1]}-${match[2]}-${match[3]}`
-    : `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`
-  const date = new Date(`${iso}T12:00:00Z`)
-  return Number.isNaN(date.getTime()) ? null : iso
 }
 
 function localDate(offsetDays: number) {
@@ -263,10 +292,6 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T12:00:00Z`))
 }
 
-function normalize(value: string) {
-  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
-}
-
 function shortTime(value: string) {
   return String(value).slice(0, 5)
 }
@@ -284,11 +309,29 @@ async function sendLongMessage(chatId: number, text: string) {
   for (const chunk of chunks) await sendMessage(chatId, chunk)
 }
 
-async function sendMessage(chatId: number, text: string) {
+function shortDate(value: string) {
+  return new Intl.DateTimeFormat('es-CL', { timeZone: TIME_ZONE, day: '2-digit', month: '2-digit' })
+    .format(new Date(`${value}T12:00:00Z`))
+}
+
+function mainKeyboard() {
+  return {
+    keyboard: [
+      [{ text: '📅 Agenda de hoy' }, { text: '➡️ Agenda de mañana' }],
+      [{ text: '🗓 Próximos 7 días' }, { text: '🔎 Buscar clienta' }],
+      [{ text: '👗 Ventas de esta semana' }, { text: '📦 Entregas de esta semana' }],
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+  }
+}
+
+async function sendMessage(chatId: number, text: string, replyMarkup?: Record<string, unknown>) {
   const response = await telegramRequest('sendMessage', {
     chat_id: chatId,
     text,
     disable_web_page_preview: true,
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
   })
   if (!response.ok) throw new Error(`Telegram rechazó el mensaje: ${response.description ?? 'sin detalle'}`)
 }

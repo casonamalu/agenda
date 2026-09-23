@@ -3,6 +3,14 @@ import { chileIsoDate, commercialDecisionLabel } from '../lib/business'
 import { formatDate, formatTime } from '../lib/date'
 import { GROUP_SALE_DURATION_MINUTES, appointmentClientNames, groupSaleDuration } from '../lib/appointments'
 import { supabase } from '../lib/supabase'
+import { clientTokenFilter, matchesClientSearch, searchTokens } from '../lib/search'
+import {
+  clearAppointmentDraft,
+  hasMeaningfulAppointmentDraft,
+  readAppointmentDraft,
+  writeAppointmentDraft,
+  type AppointmentDraftState,
+} from '../lib/appointmentDraft'
 import type { Appointment, AppointmentType, Client, ClientType, CommercialOutcome, Profile } from '../types'
 
 interface SlotOption {
@@ -95,6 +103,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [companionHistory, setCompanionHistory] = useState<CommercialDecision[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [draftReady, setDraftReady] = useState(false)
 
   const isEdit = Boolean(appointment)
   const selectedType = useMemo(
@@ -110,6 +119,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
 
   useEffect(() => {
     if (!open) return
+    setDraftReady(false)
     setError('')
     setClientQuery('')
     setClients([])
@@ -138,7 +148,37 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setCompanionDecisionDate(companion?.commercial_outcome_at ? chileIsoDate(companion.commercial_outcome_at) : chileIsoDate())
     setCompanionNotes('')
     setCompanionHistory([])
+    if (!appointment) {
+      const draft = readAppointmentDraft()
+      if (draft) {
+        setClientQuery(draft.clientQuery)
+        setSelectedClient(draft.selectedClient)
+        setNewClient(draft.newClient)
+        setHasCompanion(draft.hasCompanion)
+        setCompanionQuery(draft.companionQuery)
+        setSelectedCompanion(draft.selectedCompanion)
+        setNewCompanion(draft.newCompanion)
+        setAppointmentTypeId(draft.appointmentTypeId)
+        setDate(draft.date)
+        setStartTime(draft.startTime)
+        setDurationMinutes(draft.durationMinutes)
+        setNotes(draft.notes)
+        setAllowOutOfSlot(draft.allowOutOfSlot)
+        setAllowOverbook(draft.allowOverbook)
+        setExceptionReason(draft.exceptionReason)
+      }
+    }
+    setDraftReady(true)
   }, [appointment, initialDate, open])
+
+  useEffect(() => {
+    if (!open || isEdit || !draftReady) return
+    writeAppointmentDraft(currentDraft())
+  }, [
+    open, isEdit, draftReady, clientQuery, selectedClient, newClient, hasCompanion,
+    companionQuery, selectedCompanion, newCompanion, appointmentTypeId, date,
+    startTime, durationMinutes, notes, allowOutOfSlot, allowOverbook, exceptionReason,
+  ])
 
   useEffect(() => {
     if (!open || !appointment) return
@@ -205,23 +245,29 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   }
 
   async function searchClients() {
-    const query = clientQuery.trim().replace(/[,%()]/g, '')
-    const { data, error: searchError } = await supabase
-      .from('clients')
-      .select('*, client_type:client_types(*)')
-      .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%,instagram.ilike.%${query.replace(/^@/, '')}%`)
-      .limit(8)
-    if (!searchError) setClients((data ?? []) as Client[])
+    const data = await findMatchingClients(clientQuery)
+    if (data) setClients(data)
   }
 
   async function searchCompanionClients() {
-    const query = companionQuery.trim().replace(/[,%()]/g, '')
-    const { data, error: searchError } = await supabase
+    const data = await findMatchingClients(companionQuery)
+    if (data) setCompanionClients(data)
+  }
+
+  async function findMatchingClients(rawQuery: string) {
+    const tokens = searchTokens(rawQuery)
+    if (!tokens.length) return []
+    const searches = await Promise.all(tokens.map((token) => supabase
       .from('clients')
       .select('*, client_type:client_types(*)')
-      .or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%,instagram.ilike.%${query.replace(/^@/, '')}%`)
-      .limit(8)
-    if (!searchError) setCompanionClients((data ?? []) as Client[])
+      .or(clientTokenFilter(token))
+      .limit(100)))
+    if (searches.some((result) => result.error)) return null
+    const first = (searches[0].data ?? []) as Client[]
+    const matchingIds = searches.slice(1).map((result) => new Set((result.data ?? []).map((client) => client.id)))
+    return first
+      .filter((client) => matchingIds.every((ids) => ids.has(client.id)) && matchesClientSearch(client, rawQuery))
+      .slice(0, 8)
   }
 
   async function loadSlots() {
@@ -305,6 +351,35 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     }
   }
 
+  function currentDraft(): AppointmentDraftState {
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      clientQuery,
+      selectedClient,
+      newClient,
+      hasCompanion,
+      companionQuery,
+      selectedCompanion,
+      newCompanion,
+      appointmentTypeId,
+      date,
+      startTime,
+      durationMinutes,
+      notes,
+      allowOutOfSlot,
+      allowOverbook,
+      exceptionReason,
+    }
+  }
+
+  function requestClose() {
+    if (!isEdit && hasMeaningfulAppointmentDraft(currentDraft())
+      && !window.confirm('Hay información sin guardar. ¿Deseas cerrar y descartar el borrador?')) return
+    if (!isEdit) clearAppointmentDraft()
+    onClose()
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError('')
@@ -359,7 +434,10 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         p_exception_reason: storedExceptionReason,
       })
       if (createError) setError(createError.message)
-      else onSaved('Cita para dos personas creada por 90 minutos. Ambas confirmaciones quedaron en cola.')
+      else {
+        clearAppointmentDraft()
+        onSaved('Cita para dos personas creada por 90 minutos. Ambas confirmaciones quedaron en cola.')
+      }
     } else {
       const { error: createError } = await supabase.rpc('create_appointment_v2', {
         p_existing_client_id: selectedClient?.id ?? null,
@@ -381,7 +459,10 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         p_exception_reason: storedExceptionReason,
       })
       if (createError) setError(createError.message)
-      else onSaved('La cita fue creada y el correo informativo quedó en cola.')
+      else {
+        clearAppointmentDraft()
+        onSaved('La cita fue creada y el correo informativo quedó en cola.')
+      }
     }
     setLoading(false)
   }
@@ -469,7 +550,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   if (!open) return null
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={requestClose}>
       <section className="modal-card modal-large" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="modal-header">
           <div>
@@ -481,7 +562,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
               </p>
             )}
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="Cerrar">
+          <button className="icon-button" type="button" onClick={requestClose} aria-label="Cerrar">
             ×
           </button>
         </header>
@@ -844,7 +925,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
           {selectedType && <p className="form-help">Duración base: {selectedType.duration_minutes} minutos. Esta reserva ocupará {durationMinutes} minutos continuos. Las citas extendidas siguen contando como una cita para el límite diario.</p>}
           {error && <div className="alert alert-danger">{error}</div>}
           <footer className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>Cerrar</button>
+            <button type="button" className="btn btn-secondary" onClick={requestClose}>Cerrar</button>
             <button type="submit" className="btn btn-primary" disabled={loading}>{loading ? 'Guardando…' : isEdit ? 'Guardar cambios' : 'Crear cita'}</button>
           </footer>
         </form>

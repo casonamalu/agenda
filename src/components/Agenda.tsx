@@ -15,6 +15,7 @@ import {
 } from '../lib/date'
 import { supabase } from '../lib/supabase'
 import { appointmentClientNames, appointmentClients } from '../lib/appointments'
+import { matchesSearchValues } from '../lib/search'
 import type { Appointment, AppointmentType, CalendarView } from '../types'
 
 interface Props {
@@ -120,8 +121,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       setError(searchError.message)
       setGlobalResults([])
     } else {
-      const normalized = query.toLocaleLowerCase('es-CL').replace(/^@/, '')
-      const compactDate = normalized.replace(/\//g, '-')
+      const compactDate = query.trim().replace(/\//g, '-')
       setGlobalResults(allAppointments.filter((appointment) => {
         const clients = appointmentClients(appointment)
         const values = [
@@ -130,7 +130,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
           appointment.appointment_date,
           formatDate(appointment.appointment_date),
         ]
-        return values.some((value) => (value ?? '').toLocaleLowerCase('es-CL').replace(/^@/, '').includes(normalized))
+        return matchesSearchValues(query, values)
           || appointment.appointment_date.includes(compactDate)
       }))
     }

@@ -5,7 +5,7 @@
 ## BUG-001 · La búsqueda no encuentra nombre y apellido juntos
 
 - **Prioridad:** Alta
-- **Estado:** Pendiente
+- **Estado:** Corregido; pendiente de validación en producción
 - **Módulos afectados:** Agenda y formulario de cita
 - **Evidencia:** Buscar `Parra` encuentra la cita de Carolina Parra, pero buscar `Carolina Parra` devuelve cero resultados.
 - **Causa confirmada:** La búsqueda compara la frase completa con cada campo por separado. El valor `Carolina Parra` no existe íntegramente ni en `first_name` (`Carolina`) ni en `last_name` (`Parra`).
@@ -23,7 +23,7 @@
 ## BUG-002 · El formulario de cita se reinicia al cambiar de aplicación
 
 - **Prioridad:** Crítica
-- **Estado:** Pendiente
+- **Estado:** Corregido; pendiente de validación en Android y iPhone
 - **Módulo afectado:** Formulario de creación y edición de citas en dispositivos móviles
 - **Descripción:** Al completar una cita, cambiar brevemente a otra aplicación y volver al navegador, la pantalla parece actualizarse y el formulario se cierra o pierde la información ingresada.
 - **Causa probable identificada:** Al recuperar el foco, Supabase puede emitir `TOKEN_REFRESHED`. El listener de autenticación actual responde a todos los eventos limpiando el perfil y activando la pantalla de carga. Esto desmonta el formulario. Además, el borrador se mantiene únicamente en el estado de React y no tiene recuperación temporal.
@@ -39,4 +39,3 @@
   - Guardar la cita elimina el borrador temporal.
   - Cancelar el formulario solicita confirmación si existen cambios sin guardar y, al confirmar, elimina el borrador.
   - El comportamiento se verifica en Android Chrome y Safari de iPhone.
-

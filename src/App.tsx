@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { Agenda } from './components/Agenda'
 import { AppointmentModal } from './components/AppointmentModal'
@@ -17,6 +17,8 @@ import { Toast } from './components/Toast'
 import { Users } from './components/Users'
 import { Workshop } from './components/Workshop'
 import { toIsoDate } from './lib/date'
+import { shouldReloadProfile } from './lib/authSession'
+import { clearAppointmentDraft, readAppointmentDraft } from './lib/appointmentDraft'
 import { supabase } from './lib/supabase'
 import type { Appointment, Profile } from './types'
 
@@ -31,16 +33,18 @@ function initialPage(): PageKey {
 }
 
 export default function App() {
+  const [initialAppointmentDraft] = useState(() => readAppointmentDraft())
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState<PageKey>(initialPage)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(() => Boolean(initialAppointmentDraft))
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
-  const [newAppointmentDate, setNewAppointmentDate] = useState(toIsoDate(new Date()))
+  const [newAppointmentDate, setNewAppointmentDate] = useState(() => initialAppointmentDraft?.date ?? toIsoDate(new Date()))
   const [refreshToken, setRefreshToken] = useState(0)
   const [orderLaunchAppointmentId, setOrderLaunchAppointmentId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' }>({ message: '', kind: 'info' })
+  const profileUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
@@ -48,11 +52,18 @@ export default function App() {
       if (data.session) void loadProfile(data.session.user.id)
       else setLoading(false)
     })
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession)
+      if (!nextSession) {
+        clearAppointmentDraft()
+        profileUserIdRef.current = null
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+      if (!shouldReloadProfile(event, profileUserIdRef.current, nextSession.user.id)) return
       setProfile(null)
-      if (nextSession) void loadProfile(nextSession.user.id)
-      else setLoading(false)
+      window.setTimeout(() => void loadProfile(nextSession.user.id), 0)
     })
     return () => listener.subscription.unsubscribe()
   }, [])
@@ -82,6 +93,7 @@ export default function App() {
       setLoading(false)
       return
     }
+    profileUserIdRef.current = userProfile.id
     setProfile(userProfile)
     setLoading(false)
   }
@@ -99,6 +111,7 @@ export default function App() {
   }
 
   function handleSaved(message: string) {
+    clearAppointmentDraft()
     setModalOpen(false)
     setSelectedAppointment(null)
     setRefreshToken((value) => value + 1)

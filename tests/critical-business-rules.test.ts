@@ -11,6 +11,7 @@ import {
 } from '../src/lib/business.ts'
 import { GROUP_SALE_DURATION_MINUTES, appointmentClientNames, groupSaleDuration } from '../src/lib/appointments.ts'
 import { canResendAppointmentEmail, emailQueueSummary, filterEmailQueue } from '../src/lib/emailQueue.ts'
+import { buildEmailPreview } from '../src/lib/emailPreview.ts'
 import type { EmailQueueItem } from '../src/types.ts'
 
 test('el período de 14 días incluye hoy y los 13 días siguientes', () => {
@@ -85,6 +86,8 @@ const emailItem = (overrides: Partial<EmailQueueItem>): EmailQueueItem => ({
   attempts: 1,
   last_error: null,
   provider_message_id: 'provider-1',
+  rendered_subject: 'Tu cita fue agendada',
+  rendered_html: '<p>Hola Ana</p>',
   sent_at: '2026-09-17T12:00:01Z',
   created_at: '2026-09-17T12:00:00Z',
   ...overrides,
@@ -115,10 +118,63 @@ test('permite reenvío sin duplicar correos que siguen pendientes', () => {
   assert.equal(canResendAppointmentEmail(emailItem({ kind: 'report' })), false)
 })
 
-test('filtra historial por destinatario, tipo y estado', () => {
+test('filtra historial por destinatario, participantes, tipo, estado y fecha', () => {
   const items = [
-    emailItem({ id: '1', recipient: 'ana@example.com' }),
-    emailItem({ id: '2', recipient: 'beatriz@example.com', kind: 'reminder', status: 'failed' }),
+    emailItem({ id: '1', recipient: 'ana@example.com', sent_at: '2026-09-15T12:00:01Z' }),
+    emailItem({
+      id: '2',
+      recipient: 'beatriz@example.com',
+      kind: 'reminder',
+      status: 'failed',
+      sent_at: '2026-09-17T12:00:01Z',
+      appointment: {
+        appointment_date: '2026-09-18',
+        start_time: '10:00:00',
+        end_time: '10:30:00',
+        status: 'scheduled',
+        client: { first_name: 'Ana', last_name: 'Pérez', email: 'ana@example.com' },
+        participants: [{ client: { first_name: 'Beatriz', last_name: 'Soto', email: 'beatriz@example.com' } }],
+      },
+    }),
   ]
-  assert.deepEqual(filterEmailQueue(items, { search: 'BEATRIZ', kind: 'reminder', status: 'failed' }).map((item) => item.id), ['2'])
+  assert.deepEqual(filterEmailQueue(items, {
+    search: 'BEATRIZ', kind: 'reminder', status: 'failed', dateFrom: '2026-09-16', dateTo: '2026-09-18',
+  }).map((item) => item.id), ['2'])
+})
+
+test('muestra el contenido exacto almacenado al enviar', () => {
+  const preview = buildEmailPreview(emailItem({
+    rendered_subject: 'Confirmación exacta',
+    rendered_html: '<p>Contenido exacto</p>',
+  }), [], {})
+  assert.deepEqual(preview, {
+    subject: 'Confirmación exacta',
+    html: '<p>Contenido exacto</p>',
+    exact: true,
+  })
+})
+
+test('reconstruye correos históricos con la plantilla actual', () => {
+  const preview = buildEmailPreview(emailItem({
+    rendered_subject: null,
+    rendered_html: null,
+    recipient: 'beatriz@example.com',
+    appointment: {
+      appointment_date: '2026-10-20',
+      start_time: '10:00:00',
+      end_time: '10:30:00',
+      status: 'scheduled',
+      client: { first_name: 'Ana', last_name: 'Pérez', email: 'ana@example.com' },
+      participants: [{ client: { first_name: 'Beatriz', last_name: 'Soto', email: 'beatriz@example.com' } }],
+      appointment_type: { name: 'Prueba 1', duration_minutes: 30 },
+    },
+  }), [{
+    template_key: 'appointment_created',
+    subject: 'Cita de {{tipo_cita}} para {{nombre}}',
+    body_html: '<p>Hola {{nombre}} {{apellido}}, tu cita es a las {{horario}}.</p>',
+  }], { timezone: 'America/Santiago' })
+
+  assert.equal(preview?.subject, 'Cita de Prueba 1 para Beatriz')
+  assert.match(preview?.html ?? '', /Hola Beatriz Soto/)
+  assert.equal(preview?.exact, false)
 })

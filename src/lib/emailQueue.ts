@@ -4,6 +4,8 @@ export interface EmailQueueFilters {
   search: string
   kind: string
   status: string
+  dateFrom?: string
+  dateTo?: string
 }
 
 export function isAppointmentEmail(item: EmailQueueItem) {
@@ -19,12 +21,30 @@ export function filterEmailQueue(items: EmailQueueItem[], filters: EmailQueueFil
   return items.filter((item) => {
     if (filters.kind && item.kind !== filters.kind) return false
     if (filters.status && item.status !== filters.status) return false
+    const eventDate = chileIsoDate(item.sent_at ?? item.created_at)
+    if (filters.dateFrom && eventDate < filters.dateFrom) return false
+    if (filters.dateTo && eventDate > filters.dateTo) return false
     if (!search) return true
-    const clientName = item.appointment?.client
-      ? `${item.appointment.client.first_name} ${item.appointment.client.last_name}`
-      : ''
-    return `${item.recipient} ${clientName}`.toLocaleLowerCase('es-CL').includes(search)
+    const clients = [
+      item.appointment?.client,
+      ...(item.appointment?.participants ?? []).map((participant) => participant.client),
+    ].filter(Boolean)
+    const clientNames = clients
+      .map((client) => `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim())
+      .join(' ')
+    return `${item.recipient} ${clientNames}`.toLocaleLowerCase('es-CL').includes(search)
   })
+}
+
+function chileIsoDate(value: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value))
+  const dateParts = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`
 }
 
 export function emailQueueSummary(items: EmailQueueItem[]) {

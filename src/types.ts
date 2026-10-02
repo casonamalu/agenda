@@ -254,6 +254,8 @@ export interface EmailQueueItem {
   attempts: number
   last_error: string | null
   provider_message_id: string | null
+  rendered_subject: string | null
+  rendered_html: string | null
   sent_at: string | null
   created_at: string
   appointment?: {
@@ -261,7 +263,11 @@ export interface EmailQueueItem {
     start_time: string
     end_time: string
     status: AppointmentStatus
-    client: Pick<Client, 'first_name' | 'last_name'> | null
+    client: Pick<Client, 'first_name' | 'last_name' | 'email'> | null
+    participants?: Array<{
+      client: Pick<Client, 'first_name' | 'last_name' | 'email'> | null
+    }>
+    appointment_type?: Pick<AppointmentType, 'name' | 'duration_minutes'> | null
   } | null
 }
 

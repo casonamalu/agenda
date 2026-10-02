@@ -96,7 +96,7 @@ small { color: var(--muted); }
 .date-navigation strong { text-transform: capitalize; }
 .filter-grid { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
 .one-filter { grid-template-columns: minmax(260px, 500px); }
-.email-filters { grid-template-columns: minmax(260px, 2fr) repeat(2, minmax(170px, 1fr)); }
+.email-filters { grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(145px, 1fr)); }
 .client-filters { grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(130px, 1fr)); }
 
 .day-view, .table-card, .chart-card, .settings-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 8px 26px rgba(69,48,40,.05); }
@@ -219,6 +219,14 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .table-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .table-secondary { display: block; margin-top: 4px; color: var(--muted); }
 .email-recipient { overflow-wrap: anywhere; max-width: 240px; }
+.email-detail-modal { max-width: 920px; }
+.email-detail-body { gap: 16px; }
+.email-detail-metadata { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.email-detail-metadata > div { min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: #faf7f5; display: grid; gap: 4px; }
+.email-detail-metadata span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.email-detail-metadata strong { font-size: 13px; }
+.email-break { overflow-wrap: anywhere; }
+.email-preview-frame { width: 100%; min-height: 420px; margin-top: 8px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
 
 .kpi-grid { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 12px; }
 .kpi-card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 8px; }
@@ -398,6 +406,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
   .page-content { padding: 15px 12px 90px; }
   .page-heading, .toolbar { align-items: stretch; flex-direction: column; }
   .filter-grid, .two-columns, .three-columns, .four-columns, .dashboard-grid { grid-template-columns: 1fr; }
+  .email-detail-metadata { grid-template-columns: 1fr; }
   .dashboard-span-two { grid-column: auto; }
   .kpi-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
   .sales-outcome-grid, .client-filters, .global-result-row { grid-template-columns: 1fr; }

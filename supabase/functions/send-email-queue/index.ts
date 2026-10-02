@@ -102,6 +102,8 @@ Deno.serve(async (request) => {
           status: 'sent',
           sent_at: new Date().toISOString(),
           provider_message_id: responseBody.id ?? null,
+          rendered_subject: email.subject,
+          rendered_html: email.html,
           attempts: item.attempts + 1,
           last_error: null,
         }).eq('id', item.id)

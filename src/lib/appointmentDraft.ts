@@ -25,6 +25,7 @@ export interface AppointmentDraftState {
   newCompanion: StoredClientDraft
   appointmentTypeId: string
   date: string
+  eventDate?: string
   startTime: string
   durationMinutes: number
   notes: string
@@ -72,6 +73,7 @@ export function hasMeaningfulAppointmentDraft(draft: AppointmentDraftState) {
     || primary.instagram.trim()
     || primary.client_type_id
     || draft.startTime
+    || draft.eventDate
     || draft.notes.trim()
     || draft.hasCompanion
     || draft.selectedCompanion

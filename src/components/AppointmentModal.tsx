@@ -83,6 +83,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [newCompanion, setNewCompanion] = useState(emptyClient)
   const [appointmentTypeId, setAppointmentTypeId] = useState('')
   const [date, setDate] = useState(initialDate)
+  const [eventDate, setEventDate] = useState('')
   const [startTime, setStartTime] = useState('')
   const [durationMinutes, setDurationMinutes] = useState(45)
   const [durationStep, setDurationStep] = useState(15)
@@ -128,6 +129,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setExceptionReason(appointment?.exception_reason ?? '')
     setNotes(appointment?.internal_notes ?? '')
     setDate(appointment?.appointment_date ?? initialDate)
+    setEventDate(appointment?.event_date ?? '')
     setAppointmentTypeId(appointment?.appointment_type_id ?? '')
     setStartTime(appointment?.start_time?.slice(0, 5) ?? '')
     if (appointment) {
@@ -160,6 +162,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         setNewCompanion(draft.newCompanion)
         setAppointmentTypeId(draft.appointmentTypeId)
         setDate(draft.date)
+        setEventDate(draft.eventDate ?? '')
         setStartTime(draft.startTime)
         setDurationMinutes(draft.durationMinutes)
         setNotes(draft.notes)
@@ -177,7 +180,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   }, [
     open, isEdit, draftReady, clientQuery, selectedClient, newClient, hasCompanion,
     companionQuery, selectedCompanion, newCompanion, appointmentTypeId, date,
-    startTime, durationMinutes, notes, allowOutOfSlot, allowOverbook, exceptionReason,
+    eventDate, startTime, durationMinutes, notes, allowOutOfSlot, allowOverbook, exceptionReason,
   ])
 
   useEffect(() => {
@@ -364,6 +367,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       newCompanion,
       appointmentTypeId,
       date,
+      eventDate,
       startTime,
       durationMinutes,
       notes,
@@ -408,12 +412,13 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
 
     setLoading(true)
     if (isEdit && appointment) {
-      const { error: updateError } = await supabase.rpc('reschedule_appointment_v2', {
+      const { error: updateError } = await supabase.rpc('reschedule_appointment_v3', {
         p_appointment_id: appointment.id,
         p_appointment_type_id: appointmentTypeId,
         p_date: date,
         p_start_time: startTime,
         p_duration_minutes: durationMinutes,
+        p_event_date: eventDate || null,
         p_internal_notes: notes || null,
         p_allow_out_of_slot: allowOutOfSlot,
         p_allow_overbook: allowOverbook,
@@ -422,12 +427,13 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       if (updateError) setError(updateError.message)
       else onSaved('La cita fue actualizada y se programó el correo correspondiente.')
     } else if (hasCompanion) {
-      const { error: createError } = await supabase.rpc('create_group_sale_appointment_v1', {
+      const { error: createError } = await supabase.rpc('create_group_sale_appointment_v2', {
         p_primary_client: clientPayload(selectedClient, newClient),
         p_companion_client: clientPayload(selectedCompanion, newCompanion),
         p_appointment_type_id: appointmentTypeId,
         p_date: date,
         p_start_time: startTime,
+        p_event_date: eventDate || null,
         p_internal_notes: notes || null,
         p_allow_out_of_slot: allowOutOfSlot,
         p_allow_overbook: allowOverbook,
@@ -439,7 +445,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         onSaved('Cita para dos personas creada por 90 minutos. Ambas confirmaciones quedaron en cola.')
       }
     } else {
-      const { error: createError } = await supabase.rpc('create_appointment_v2', {
+      const { error: createError } = await supabase.rpc('create_appointment_v3', {
         p_existing_client_id: selectedClient?.id ?? null,
         p_first_name: selectedClient ? null : newClient.first_name.trim(),
         p_last_name: selectedClient ? null : newClient.last_name.trim(),
@@ -453,6 +459,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         p_date: date,
         p_start_time: startTime,
         p_duration_minutes: durationMinutes,
+        p_event_date: eventDate || null,
         p_internal_notes: notes || null,
         p_allow_out_of_slot: allowOutOfSlot,
         p_allow_overbook: allowOverbook,
@@ -741,6 +748,10 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
               <label>
                 Fecha
                 <input type="date" value={date} onChange={(event) => { setDate(event.target.value); setStartTime('') }} required />
+              </label>
+              <label>
+                Fecha del evento (opcional)
+                <input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} />
               </label>
               <label>
                 Horario

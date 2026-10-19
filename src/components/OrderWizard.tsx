@@ -57,6 +57,7 @@ export function OrderWizard({
     setSourceAppointmentId(source.id)
     setClientId(source.client_id)
     setSaleDate(source.commercial_outcome_at ? chileIsoDate(source.commercial_outcome_at) : source.appointment_date)
+    setEventDate(source.event_date ?? '')
   }, [initialAppointmentId, saleAppointments])
 
   useEffect(() => {
@@ -70,6 +71,7 @@ export function OrderWizard({
     if (source) {
       setClientId(source.client_id)
       setSaleDate(source.commercial_outcome_at ? chileIsoDate(source.commercial_outcome_at) : source.appointment_date)
+      setEventDate(source.event_date ?? '')
     }
   }
 

@@ -82,6 +82,7 @@ export interface Appointment {
   client_id: string
   appointment_type_id: string
   appointment_date: string
+  event_date: string | null
   start_time: string
   end_time: string
   status: AppointmentStatus
@@ -257,45 +258,3 @@ export interface EmailQueueItem {
   rendered_subject: string | null
   rendered_html: string | null
   sent_at: string | null
-  created_at: string
-  appointment?: {
-    appointment_date: string
-    start_time: string
-    end_time: string
-    status: AppointmentStatus
-    client: Pick<Client, 'first_name' | 'last_name' | 'email'> | null
-    participants?: Array<{
-      client: Pick<Client, 'first_name' | 'last_name' | 'email'> | null
-    }>
-    appointment_type?: Pick<AppointmentType, 'name' | 'duration_minutes'> | null
-  } | null
-}
-
-export interface ScheduledReport {
-  id: string
-  name: string
-  active: boolean
-  weekdays: number[]
-  send_time: string
-  recipients: string[]
-  period_type: 'today' | 'tomorrow' | 'week' | 'fortnight'
-  appointment_type_ids: string[] | null
-  statuses: AppointmentStatus[] | null
-  selected_fields: string[]
-  send_empty: boolean
-  created_by: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface DashboardStats {
-  total: number
-  scheduled: number
-  rescheduled: number
-  cancelled: number
-  noShow: number
-  byType: Array<{ name: string; count: number; color: string }>
-  byClientType: Array<{ name: string; count: number }>
-  byWeekday: Array<{ name: string; count: number }>
-  utilization: number
-}

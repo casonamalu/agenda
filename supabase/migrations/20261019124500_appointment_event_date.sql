@@ -1,0 +1,163 @@
+begin;
+
+alter table public.appointments
+  add column if not exists event_date date;
+
+comment on column public.appointments.event_date is
+  'Fecha del evento informada al agendar la cita; es independiente de la fecha de atención.';
+
+create or replace function public.create_appointment_v3(
+  p_existing_client_id uuid,
+  p_first_name text,
+  p_last_name text,
+  p_email text,
+  p_phone text,
+  p_instagram text,
+  p_client_type_id uuid,
+  p_marketing_consent boolean,
+  p_marketing_consent_source text,
+  p_appointment_type_id uuid,
+  p_date date,
+  p_start_time time,
+  p_duration_minutes integer,
+  p_event_date date default null,
+  p_internal_notes text default null,
+  p_allow_out_of_slot boolean default false,
+  p_allow_overbook boolean default false,
+  p_exception_reason text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_appointment_id uuid;
+begin
+  v_appointment_id := public.create_appointment_v2(
+    p_existing_client_id,
+    p_first_name,
+    p_last_name,
+    p_email,
+    p_phone,
+    p_instagram,
+    p_client_type_id,
+    p_marketing_consent,
+    p_marketing_consent_source,
+    p_appointment_type_id,
+    p_date,
+    p_start_time,
+    p_duration_minutes,
+    p_internal_notes,
+    p_allow_out_of_slot,
+    p_allow_overbook,
+    p_exception_reason
+  );
+
+  if p_event_date is not null then
+    perform set_config('app.audit_reason', 'Fecha de evento registrada al crear cita', true);
+    update public.appointments
+    set event_date = p_event_date
+    where id = v_appointment_id;
+  end if;
+
+  return v_appointment_id;
+end;
+$$;
+
+create or replace function public.reschedule_appointment_v3(
+  p_appointment_id uuid,
+  p_appointment_type_id uuid,
+  p_date date,
+  p_start_time time,
+  p_duration_minutes integer,
+  p_event_date date default null,
+  p_internal_notes text default null,
+  p_allow_out_of_slot boolean default false,
+  p_allow_overbook boolean default false,
+  p_exception_reason text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+begin
+  perform public.reschedule_appointment_v2(
+    p_appointment_id,
+    p_appointment_type_id,
+    p_date,
+    p_start_time,
+    p_duration_minutes,
+    p_internal_notes,
+    p_allow_out_of_slot,
+    p_allow_overbook,
+    p_exception_reason
+  );
+
+  if exists (
+    select 1
+    from public.appointments
+    where id = p_appointment_id
+      and event_date is distinct from p_event_date
+  ) then
+    perform set_config('app.audit_reason', 'Fecha de evento actualizada desde la cita', true);
+    update public.appointments
+    set event_date = p_event_date
+    where id = p_appointment_id;
+  end if;
+end;
+$$;
+
+create or replace function public.create_group_sale_appointment_v2(
+  p_primary_client jsonb,
+  p_companion_client jsonb,
+  p_appointment_type_id uuid,
+  p_date date,
+  p_start_time time,
+  p_event_date date default null,
+  p_internal_notes text default null,
+  p_allow_out_of_slot boolean default false,
+  p_allow_overbook boolean default false,
+  p_exception_reason text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  v_appointment_id uuid;
+begin
+  v_appointment_id := public.create_group_sale_appointment_v1(
+    p_primary_client,
+    p_companion_client,
+    p_appointment_type_id,
+    p_date,
+    p_start_time,
+    p_internal_notes,
+    p_allow_out_of_slot,
+    p_allow_overbook,
+    p_exception_reason
+  );
+
+  if p_event_date is not null then
+    perform set_config('app.audit_reason', 'Fecha de evento registrada al crear cita grupal', true);
+    update public.appointments
+    set event_date = p_event_date
+    where id = v_appointment_id;
+  end if;
+
+  return v_appointment_id;
+end;
+$$;
+
+revoke all on function public.create_appointment_v3(uuid,text,text,text,text,text,uuid,boolean,text,uuid,date,time,integer,date,text,boolean,boolean,text) from public, anon, authenticated;
+revoke all on function public.reschedule_appointment_v3(uuid,uuid,date,time,integer,date,text,boolean,boolean,text) from public, anon, authenticated;
+revoke all on function public.create_group_sale_appointment_v2(jsonb,jsonb,uuid,date,time,date,text,boolean,boolean,text) from public, anon, authenticated;
+
+grant execute on function public.create_appointment_v3(uuid,text,text,text,text,text,uuid,boolean,text,uuid,date,time,integer,date,text,boolean,boolean,text) to authenticated;
+grant execute on function public.reschedule_appointment_v3(uuid,uuid,date,time,integer,date,text,boolean,boolean,text) to authenticated;
+grant execute on function public.create_group_sale_appointment_v2(jsonb,jsonb,uuid,date,time,date,text,boolean,boolean,text) to authenticated;
+
+commit;

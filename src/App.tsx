@@ -29,8 +29,12 @@ const ADMIN_PAGES: PageKey[] = ['reports', 'settings', 'users', 'emails', 'audit
 const COMMERCIAL_PAGES: PageKey[] = ['cash', 'profitability']
 
 function initialPage(): PageKey {
-  const stored = window.localStorage.getItem(PAGE_STORAGE_KEY) as PageKey | null
-  return stored && VALID_PAGES.includes(stored) ? stored : 'agenda'
+  try {
+    const stored = window.localStorage.getItem(PAGE_STORAGE_KEY) as PageKey | null
+    return stored && VALID_PAGES.includes(stored) ? stored : 'agenda'
+  } catch {
+    return 'agenda'
+  }
 }
 
 export default function App() {
@@ -90,7 +94,11 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    window.localStorage.setItem(PAGE_STORAGE_KEY, page)
+    try {
+      window.localStorage.setItem(PAGE_STORAGE_KEY, page)
+    } catch {
+      // La agenda debe seguir funcionando si el navegador restringe el almacenamiento.
+    }
   }, [page])
 
   useEffect(() => {

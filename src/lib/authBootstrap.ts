@@ -35,13 +35,10 @@ export async function resolveInitialSession(): Promise<Session | null> {
     throw new Error(callback.message)
   }
 
-  const { error: initializationError } = await withTimeout(supabase.auth.initialize())
-  if (initializationError) {
-    if (callback.kind !== 'none') clearCallbackUrl()
-    throw initializationError
-  }
-
   const { data, error } = await withTimeout(supabase.auth.getSession())
-  if (error) throw error
+  if (error || (callback.kind === 'code' && !data.session)) {
+    clearCallbackUrl()
+    throw error ?? new Error('El retorno de Google no produjo una sesión válida.')
+  }
   return data.session
 }

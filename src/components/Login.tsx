@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export function Login() {
+export function Login({ authError = '' }: { authError?: string }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loadingMethod, setLoadingMethod] = useState<'password' | 'google' | null>(null)
@@ -76,7 +76,7 @@ export function Login() {
               required
             />
           </label>
-          {error && <div className="alert alert-danger">{error}</div>}
+          {(error || authError) && <div className="alert alert-danger" role="alert">{error || authError}</div>}
           <button className="btn btn-primary btn-block" type="submit" disabled={loadingMethod !== null}>
             {loadingMethod === 'password' ? 'Ingresando…' : 'Ingresar'}
           </button>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { shouldReloadProfile } from '../src/lib/authSession.ts'
+import { cleanOAuthCallbackUrl, readOAuthCallback, shouldReloadProfile } from '../src/lib/authSession.ts'
 import { hasMeaningfulAppointmentDraft, type AppointmentDraftState } from '../src/lib/appointmentDraft.ts'
 import { matchesClientSearch, matchesSearchValues, searchTokens } from '../src/lib/search.ts'
 
@@ -31,6 +31,26 @@ test('una renovación de token no obliga a recargar el perfil', () => {
   assert.equal(shouldReloadProfile('SIGNED_IN', 'user-1', 'user-1'), false)
   assert.equal(shouldReloadProfile('SIGNED_IN', null, 'user-1'), true)
   assert.equal(shouldReloadProfile('USER_UPDATED', 'user-1', 'user-1'), true)
+})
+
+test('reconoce y limpia el retorno PKCE de Google', () => {
+  assert.deepEqual(readOAuthCallback('https://agenda.example/?code=oauth-code'), { kind: 'code', code: 'oauth-code' })
+  assert.equal(cleanOAuthCallbackUrl('https://agenda.example/?code=oauth-code&view=agenda'), '/?view=agenda')
+})
+
+test('mantiene compatibilidad con retornos OAuth implícitos', () => {
+  assert.deepEqual(
+    readOAuthCallback('https://agenda.example/#access_token=access&refresh_token=refresh&expires_in=3600'),
+    { kind: 'tokens', accessToken: 'access', refreshToken: 'refresh' },
+  )
+  assert.equal(cleanOAuthCallbackUrl('https://agenda.example/#access_token=access&refresh_token=refresh'), '/')
+})
+
+test('detecta errores devueltos por el proveedor OAuth', () => {
+  assert.deepEqual(
+    readOAuthCallback('https://agenda.example/?error=access_denied&error_description=Acceso%20cancelado'),
+    { kind: 'error', message: 'Acceso cancelado' },
+  )
 })
 
 test('detecta cuándo un borrador contiene información que debe protegerse', () => {

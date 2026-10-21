@@ -17,6 +17,7 @@ import { Toast } from './components/Toast'
 import { Users } from './components/Users'
 import { Workshop } from './components/Workshop'
 import { toIsoDate } from './lib/date'
+import { resolveInitialSession } from './lib/authBootstrap'
 import { shouldReloadProfile } from './lib/authSession'
 import { clearAppointmentDraft, readAppointmentDraft } from './lib/appointmentDraft'
 import { supabase } from './lib/supabase'
@@ -37,6 +38,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
   const [page, setPage] = useState<PageKey>(initialPage)
   const [modalOpen, setModalOpen] = useState(() => Boolean(initialAppointmentDraft))
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
@@ -45,18 +47,17 @@ export default function App() {
   const [orderLaunchAppointmentId, setOrderLaunchAppointmentId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; kind: 'success' | 'error' | 'info' }>({ message: '', kind: 'info' })
   const profileUserIdRef = useRef<string | null>(null)
+  const loadingProfileUserIdRef = useRef<string | null>(null)
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      if (data.session) void loadProfile(data.session.user.id)
-      else setLoading(false)
-    })
+    let active = true
     const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!active) return
       setSession(nextSession)
       if (!nextSession) {
         clearAppointmentDraft()
         profileUserIdRef.current = null
+        loadingProfileUserIdRef.current = null
         setProfile(null)
         setLoading(false)
         return
@@ -65,7 +66,27 @@ export default function App() {
       setProfile(null)
       window.setTimeout(() => void loadProfile(nextSession.user.id), 0)
     })
-    return () => listener.subscription.unsubscribe()
+
+    void resolveInitialSession()
+      .then((initialSession) => {
+        if (!active) return
+        setAuthError('')
+        setSession(initialSession)
+        if (initialSession && profileUserIdRef.current !== initialSession.user.id) void loadProfile(initialSession.user.id)
+        else if (!initialSession) setLoading(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setSession(null)
+        setProfile(null)
+        setAuthError('No pudimos completar el acceso con Google. Vuelve a intentarlo; si persiste, usa correo y contraseña.')
+        setLoading(false)
+      })
+
+    return () => {
+      active = false
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
@@ -78,9 +99,12 @@ export default function App() {
   }, [page, profile])
 
   async function loadProfile(userId: string) {
+    if (profileUserIdRef.current === userId || loadingProfileUserIdRef.current === userId) return
+    loadingProfileUserIdRef.current = userId
     setLoading(true)
     const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
     if (error || !data) {
+      loadingProfileUserIdRef.current = null
       setToast({ message: 'La cuenta no tiene un perfil válido. Contacta al administrador.', kind: 'error' })
       await supabase.auth.signOut()
       setLoading(false)
@@ -88,11 +112,13 @@ export default function App() {
     }
     const userProfile = data as Profile
     if (!userProfile.active) {
+      loadingProfileUserIdRef.current = null
       setToast({ message: 'Esta cuenta se encuentra dada de baja.', kind: 'error' })
       await supabase.auth.signOut()
       setLoading(false)
       return
     }
+    loadingProfileUserIdRef.current = null
     profileUserIdRef.current = userProfile.id
     setProfile(userProfile)
     setLoading(false)
@@ -131,7 +157,7 @@ export default function App() {
   }
 
   if (loading) return <div className="loading-screen">Cargando sistema…</div>
-  if (!session || !profile) return <Login />
+  if (!session || !profile) return <Login authError={authError} />
 
   return (
     <>

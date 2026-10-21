@@ -35,21 +35,10 @@ export async function resolveInitialSession(): Promise<Session | null> {
     throw new Error(callback.message)
   }
 
-  if (callback.kind === 'code') {
-    const { data, error } = await withTimeout(supabase.auth.exchangeCodeForSession(callback.code))
-    clearCallbackUrl()
-    if (error) throw error
-    return data.session
-  }
-
-  if (callback.kind === 'tokens') {
-    const { data, error } = await withTimeout(supabase.auth.setSession({
-      access_token: callback.accessToken,
-      refresh_token: callback.refreshToken,
-    }))
-    clearCallbackUrl()
-    if (error) throw error
-    return data.session
+  const { error: initializationError } = await withTimeout(supabase.auth.initialize())
+  if (initializationError) {
+    if (callback.kind !== 'none') clearCallbackUrl()
+    throw initializationError
   }
 
   const { data, error } = await withTimeout(supabase.auth.getSession())

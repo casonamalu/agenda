@@ -1,4 +1,5 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8'
+import writeXlsxFile from 'npm:write-excel-file@4.1.1/universal'
 
 interface QueueItem {
   id: string
@@ -17,6 +18,10 @@ interface BuiltEmail {
   subject: string
   html: string
   replyTo: string
+  attachments?: Array<{
+    filename: string
+    content: string
+  }>
   skipReason?: string
 }
 
@@ -94,6 +99,7 @@ Deno.serve(async (request) => {
             reply_to: email.replyTo || undefined,
             subject: email.subject,
             html: email.html,
+            attachments: email.attachments?.length ? email.attachments : undefined,
           }),
         })
         const responseBody = await response.json()
@@ -133,7 +139,7 @@ Deno.serve(async (request) => {
   }
 })
 
-async function claimItem(supabase: ReturnType<typeof createClient>, id: string) {
+async function claimItem(supabase: SupabaseClient<any>, id: string) {
   const { data } = await supabase
     .from('email_queue')
     .update({ status: 'processing' })
@@ -143,14 +149,14 @@ async function claimItem(supabase: ReturnType<typeof createClient>, id: string) 
   return Boolean(data?.length)
 }
 
-async function loadSettings(supabase: ReturnType<typeof createClient>): Promise<SettingsMap> {
+async function loadSettings(supabase: SupabaseClient<any>): Promise<SettingsMap> {
   const { data, error } = await supabase.from('app_settings').select('setting_key,setting_value')
   if (error) throw new Error(`No fue posible cargar la configuración: ${error.message}`)
   return Object.fromEntries((data ?? []).map((setting) => [setting.setting_key, setting.setting_value]))
 }
 
 async function buildEmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any>,
   item: QueueItem,
   settingsMap: SettingsMap,
 ): Promise<BuiltEmail> {
@@ -205,7 +211,7 @@ async function buildEmail(
 }
 
 async function buildReportEmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any>,
   item: QueueItem,
   settingsMap: SettingsMap,
 ): Promise<BuiltEmail> {
@@ -234,7 +240,7 @@ async function buildReportEmail(
 
   let query = supabase
     .from('appointments')
-    .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
+    .select('appointment_date,event_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
     .gte('appointment_date', from)
     .lte('appointment_date', to)
     .order('appointment_date')
@@ -291,6 +297,7 @@ async function buildReportEmail(
     : `${formatReportDate(from, timezone)} al ${formatReportDate(to, timezone)}`
   const businessName = stringSetting(settingsMap, 'business_name', 'Casona Malú')
   const emptyRow = `<tr><td colspan="${Math.max(1, visibleFields.length)}" style="padding:16px;text-align:center;color:#776d68">No existen citas para el período.</td></tr>`
+  const workbook = await buildReportWorkbook((appointments ?? []) as Array<Record<string, unknown>>)
 
   return {
     subject: `${report.name} – ${periodText}`,
@@ -304,11 +311,115 @@ async function buildReportEmail(
           </thead>
           <tbody>${rows || emptyRow}</tbody>
         </table>
+        <p>Se adjunta el reporte en formato Excel con el detalle de pruebas y entregas.</p>
         <p style="color:#776d68;font-size:12px">Generado automáticamente por Agenda Casona Malú.</p>
       </div>
     `,
     replyTo: stringSetting(settingsMap, 'contact_email', ''),
+    attachments: [{
+      filename: `reporte-pruebas-entregas-${from}-al-${to}.xlsx`,
+      content: workbook,
+    }],
   }
+}
+
+async function buildReportWorkbook(appointments: Array<Record<string, unknown>>) {
+  const headerStyle = {
+    backgroundColor: '#874158',
+    color: '#FFFFFF',
+    fontWeight: 'bold' as const,
+    align: 'center' as const,
+  }
+  const rows = appointments.flatMap((appointment) => {
+    const primaryClient = firstRelation(appointment.client)
+    const participantClients = Array.isArray(appointment.participants)
+      ? appointment.participants.flatMap((participant) => {
+        if (!participant || typeof participant !== 'object') return []
+        const client = firstRelation((participant as Record<string, unknown>).client)
+        return client ? [client] : []
+      })
+      : []
+    const clients = [primaryClient, ...participantClients].filter((client): client is Record<string, unknown> => Boolean(client))
+    const type = firstRelation(appointment.appointment_type)
+    const typeName = String(type?.name ?? '')
+    const appointmentDate = String(appointment.appointment_date ?? '')
+    const eventDate = String(appointment.event_date ?? '')
+
+    return clients.map((client) => ({
+      clientName: `${String(client.first_name ?? '')} ${String(client.last_name ?? '')}`.trim(),
+      phone: String(client.phone ?? ''),
+      appointmentType: typeName === 'Entrega' ? 'Entrega cliente' : typeName,
+      appointmentDate,
+      internalDeliveryDate: typeName === 'Entrega' ? addDays(appointmentDate, -2) : '',
+      eventDate,
+    }))
+  }).sort((left, right) => (
+    left.clientName.localeCompare(right.clientName, 'es-CL')
+    || left.appointmentDate.localeCompare(right.appointmentDate)
+    || reportTypeOrder(left.appointmentType) - reportTypeOrder(right.appointmentType)
+  ))
+
+  const sheetData = [
+    [
+      { value: 'Clienta', ...headerStyle },
+      { value: 'Teléfono', ...headerStyle },
+      { value: 'Tipo Cita', ...headerStyle },
+      { value: 'Fecha Cita', ...headerStyle },
+      { value: 'Entrega interna', ...headerStyle },
+      { value: 'Fecha evento (sistema)', ...headerStyle },
+      { value: 'Observación', ...headerStyle },
+    ],
+    ...rows.map((row) => [
+      { value: row.clientName },
+      { value: row.phone },
+      { value: row.appointmentType, backgroundColor: '#874158', color: '#FFFFFF', fontWeight: 'bold' as const, align: 'center' as const },
+      { value: shortDate(row.appointmentDate), backgroundColor: '#C8EBF8', fontWeight: 'bold' as const, align: 'center' as const },
+      { value: shortDate(row.internalDeliveryDate), align: 'center' as const },
+      { value: shortDate(row.eventDate), align: 'center' as const },
+      { value: '' },
+    ]),
+  ]
+
+  const blob = await writeXlsxFile(sheetData, {
+    columns: [
+      { width: 27 },
+      { width: 18 },
+      { width: 18 },
+      { width: 15 },
+      { width: 17 },
+      { width: 21 },
+      { width: 34 },
+    ],
+    sheet: 'Pruebas y entregas',
+  }).toBlob()
+  return bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
+}
+
+function firstRelation(value: unknown): Record<string, unknown> | null {
+  const relation = Array.isArray(value) ? value[0] : value
+  return relation && typeof relation === 'object' ? relation as Record<string, unknown> : null
+}
+
+function shortDate(value: string) {
+  if (!value) return ''
+  const [year, month, day] = value.split('-')
+  return `${day}-${month}-${year}`
+}
+
+function reportTypeOrder(value: string) {
+  if (value === 'Prueba 1') return 1
+  if (value === 'Prueba 2') return 2
+  if (value === 'Entrega cliente') return 3
+  return 4
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
 }
 
 function render(value: string, variables: Record<string, string>) {
@@ -337,7 +448,7 @@ function secureEqual(left: string, right: string) {
 }
 
 async function notifyAdmins(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<any>,
   apiKey: string,
   fromAddress: string,
   item: QueueItem,

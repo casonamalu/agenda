@@ -279,7 +279,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .report-form { display: grid; gap: 16px; }
 .choice-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 10px; }
 .follow-up-report { display: grid; gap: 16px; }
-.follow-up-filters { display: grid; grid-template-columns: repeat(2, minmax(160px, 220px)) auto; gap: 12px; align-items: end; }
+.follow-up-filters { display: grid; grid-template-columns: repeat(3, minmax(150px, 210px)) auto; gap: 12px; align-items: end; }
 .follow-up-filters .btn { min-height: 42px; }
 .follow-up-table-card { border-radius: 12px; box-shadow: none; }
 .follow-up-table { min-width: 980px; table-layout: fixed; }

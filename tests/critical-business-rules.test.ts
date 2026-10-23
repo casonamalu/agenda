@@ -12,6 +12,7 @@ import {
 import { GROUP_SALE_DURATION_MINUTES, appointmentClientNames, groupSaleDuration } from '../src/lib/appointments.ts'
 import { canResendAppointmentEmail, emailQueueSummary, filterEmailQueue } from '../src/lib/emailQueue.ts'
 import { buildEmailPreview } from '../src/lib/emailPreview.ts'
+import { buildFollowUpReportRows, formatShortReportDate } from '../src/lib/followUpReport.ts'
 import type { EmailQueueItem } from '../src/types.ts'
 
 test('el período de 14 días incluye hoy y los 13 días siguientes', () => {
@@ -73,6 +74,41 @@ test('muestra a la clienta principal y a la acompañante en una sola cita', () =
     participants: [{ client: { first_name: 'Elena', last_name: 'Pérez' } }],
   }
   assert.equal(appointmentClientNames(appointment as never), 'Ana Pérez + Elena Pérez')
+})
+
+test('el reporte de seguimiento calcula la entrega interna dos días antes', () => {
+  const rows = buildFollowUpReportRows([{
+    appointment_date: '2026-12-21',
+    event_date: '2026-12-28',
+    client: { first_name: 'Patricia', last_name: 'Gajardo', phone: '+56992894737' },
+    participants: [],
+    appointment_type: { name: 'Entrega' },
+  }])
+
+  assert.deepEqual(rows, [{
+    clientName: 'Patricia Gajardo',
+    phone: '+56992894737',
+    appointmentType: 'Entrega cliente',
+    appointmentDate: '2026-12-21',
+    internalDeliveryDate: '2026-12-19',
+    eventDate: '2026-12-28',
+    observation: '',
+  }])
+  assert.equal(formatShortReportDate(rows[0].internalDeliveryDate), '19-12-2026')
+})
+
+test('el reporte deja entrega interna y observación en blanco para las pruebas', () => {
+  const rows = buildFollowUpReportRows([{
+    appointment_date: '2026-10-14',
+    event_date: null,
+    client: { first_name: 'Patricia', last_name: 'Gajardo', phone: '+56992894737' },
+    participants: [],
+    appointment_type: { name: 'Prueba 1' },
+  }])
+
+  assert.equal(rows[0].internalDeliveryDate, '')
+  assert.equal(rows[0].eventDate, '')
+  assert.equal(rows[0].observation, '')
 })
 
 const emailItem = (overrides: Partial<EmailQueueItem>): EmailQueueItem => ({

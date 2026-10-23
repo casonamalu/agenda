@@ -111,7 +111,7 @@ test('el reporte de seguimiento calcula la entrega interna dos días antes', () 
   assert.equal(formatShortReportDate(rows[0].internalDeliveryDate), '19-12-2026')
 })
 
-test('el reporte deja entrega interna y observación en blanco para las pruebas', () => {
+test('el reporte calcula la fecha interna para las pruebas y deja observación en blanco', () => {
   const rows = buildFollowUpReportRows([{
     appointment_date: '2026-10-14',
     event_date: null,
@@ -120,7 +120,8 @@ test('el reporte deja entrega interna y observación en blanco para las pruebas'
     appointment_type: { name: 'Prueba 1' },
   }])
 
-  assert.equal(rows[0].internalDeliveryDate, '')
+  assert.equal(rows[0].internalDeliveryDate, '2026-10-12')
+  assert.equal(formatShortReportDate(rows[0].internalDeliveryDate), '12-10-2026')
   assert.equal(rows[0].eventDate, '')
   assert.equal(rows[0].observation, '')
 })

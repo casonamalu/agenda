@@ -22,6 +22,13 @@ test('el período de 14 días incluye hoy y los 13 días siguientes', () => {
   })
 })
 
+test('el período de 31 días incluye hoy y los 30 días siguientes', () => {
+  assert.deepEqual(reportDateRange('next_31_days', '2026-10-23'), {
+    from: '2026-10-23',
+    to: '2026-11-22',
+  })
+})
+
 test('día siguiente y próximos 7 días mantienen sus límites', () => {
   assert.deepEqual(reportDateRange('tomorrow', '2026-09-14'), {
     from: '2026-09-15',

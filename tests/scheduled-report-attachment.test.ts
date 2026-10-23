@@ -26,3 +26,8 @@ test('el Excel programado contiene las columnas solicitadas', () => {
   assert.match(source, /event_date/)
   assert.match(source, /addDays\(appointmentDate, -2\)/)
 })
+
+test('el envío programado admite el período de próximos 31 días', () => {
+  assert.match(source, /report\.period_type === 'next_31_days'/)
+  assert.match(source, /to = addDays\(runDate, 30\)/)
+})

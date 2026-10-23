@@ -54,6 +54,7 @@ export function reportDateRange(
   }
   if (period === 'week') return { from: today, to: addIsoDays(today, 6) }
   if (period === 'fortnight') return { from: today, to: addIsoDays(today, 13) }
+  if (period === 'next_30_days') return { from: today, to: addIsoDays(today, 29) }
   if (period === 'next_31_days') return { from: today, to: addIsoDays(today, 30) }
   return { from: today, to: today }
 }

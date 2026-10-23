@@ -410,6 +410,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
               <option value="tomorrow">Agenda del día siguiente</option>
               <option value="week">Próximos 7 días</option>
               <option value="fortnight">Próximos 14 días</option>
+              <option value="next_31_days">Próximos 31 días</option>
             </select>
           </label>
           <label className="span-two">Destinatarios<input required placeholder="correo1@dominio.cl, correo2@dominio.cl" value={form.recipients} onChange={(event) => setForm({ ...form, recipients: event.target.value })} /></label>
@@ -501,6 +502,7 @@ function periodLabel(period: ScheduledReport['period_type']) {
   if (period === 'today') return 'Mismo día'
   if (period === 'tomorrow') return 'Día siguiente'
   if (period === 'fortnight') return 'Próximos 14 días'
+  if (period === 'next_31_days') return 'Próximos 31 días'
   return 'Próximos 7 días'
 }
 

@@ -354,7 +354,7 @@ async function buildReportWorkbook(appointments: Array<Record<string, unknown>>)
       phone: String(client.phone ?? ''),
       appointmentType: typeName === 'Entrega' ? 'Entrega cliente' : typeName,
       appointmentDate,
-      internalDeliveryDate: typeName === 'Entrega' ? addDays(appointmentDate, -2) : '',
+      internalDeliveryDate: addDays(appointmentDate, -2),
       eventDate,
     }))
   }).sort((left, right) => (

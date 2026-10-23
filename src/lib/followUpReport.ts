@@ -41,9 +41,7 @@ export function buildFollowUpReportRows(
       phone: client.phone,
       appointmentType: appointmentType === 'Entrega' ? 'Entrega cliente' : appointmentType,
       appointmentDate: appointment.appointment_date,
-      internalDeliveryDate: appointmentType === 'Entrega'
-        ? addIsoDays(appointment.appointment_date, -2)
-        : '',
+      internalDeliveryDate: addIsoDays(appointment.appointment_date, -2),
       eventDate: appointment.event_date ?? '',
       observation: '',
     }))

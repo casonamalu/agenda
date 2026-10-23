@@ -24,7 +24,8 @@ test('el Excel programado contiene las columnas solicitadas', () => {
     assert.match(source, new RegExp(column.replace(/[()]/g, '\\$&')))
   }
   assert.match(source, /event_date/)
-  assert.match(source, /addDays\(appointmentDate, -2\)/)
+  assert.match(source, /internalDeliveryDate: addDays\(appointmentDate, -2\)/)
+  assert.doesNotMatch(source, /internalDeliveryDate: typeName === 'Entrega'/)
 })
 
 test('el envío programado admite el período de próximos 31 días', () => {

@@ -39,6 +39,8 @@ interface PrintableAppointment {
   appointment_type: { name: string } | null
 }
 
+type FollowUpPeriod = 'custom' | 'today' | 'week' | 'fortnight' | 'next_30_days'
+
 const weekdays = [
   { value: 1, label: 'Lunes' },
   { value: 2, label: 'Martes' },
@@ -75,6 +77,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+  const [followUpPeriod, setFollowUpPeriod] = useState<FollowUpPeriod>('custom')
   const [followUpFrom, setFollowUpFrom] = useState(() => chileIsoDate())
   const [followUpTo, setFollowUpTo] = useState(() => addIsoDays(chileIsoDate(), 14))
   const [followUpRows, setFollowUpRows] = useState<FollowUpReportRow[]>([])
@@ -128,6 +131,16 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
         ? current.statuses.filter((item) => item !== status)
         : [...current.statuses, status],
     }))
+  }
+
+  function changeFollowUpPeriod(period: FollowUpPeriod) {
+    setFollowUpPeriod(period)
+    if (period === 'custom') return
+
+    const today = chileIsoDate()
+    const days = period === 'today' ? 0 : period === 'week' ? 6 : period === 'fortnight' ? 13 : 29
+    setFollowUpFrom(today)
+    setFollowUpTo(addIsoDays(today, days))
   }
 
   async function saveReport(event: FormEvent) {
@@ -356,8 +369,18 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
         </div>
 
         <form className="follow-up-filters" onSubmit={generateFollowUpReport}>
-          <label>Desde<input required type="date" value={followUpFrom} onChange={(event) => setFollowUpFrom(event.target.value)} /></label>
-          <label>Hasta<input required type="date" value={followUpTo} onChange={(event) => setFollowUpTo(event.target.value)} /></label>
+          <label>
+            Período
+            <select value={followUpPeriod} onChange={(event) => changeFollowUpPeriod(event.target.value as FollowUpPeriod)}>
+              <option value="custom">Personalizado</option>
+              <option value="today">Hoy</option>
+              <option value="week">Próximos 7 días</option>
+              <option value="fortnight">Próximos 14 días</option>
+              <option value="next_30_days">Próximos 30 días</option>
+            </select>
+          </label>
+          <label>Desde<input required type="date" value={followUpFrom} onChange={(event) => { setFollowUpFrom(event.target.value); setFollowUpPeriod('custom') }} /></label>
+          <label>Hasta<input required type="date" value={followUpTo} onChange={(event) => { setFollowUpTo(event.target.value); setFollowUpPeriod('custom') }} /></label>
           <button className="btn btn-primary" type="submit" disabled={followUpLoading || loading}>
             {followUpLoading ? 'Consultando…' : 'Consultar reporte'}
           </button>
@@ -410,7 +433,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
               <option value="tomorrow">Agenda del día siguiente</option>
               <option value="week">Próximos 7 días</option>
               <option value="fortnight">Próximos 14 días</option>
-              <option value="next_31_days">Próximos 31 días</option>
+              <option value="next_30_days">Próximos 30 días</option>
             </select>
           </label>
           <label className="span-two">Destinatarios<input required placeholder="correo1@dominio.cl, correo2@dominio.cl" value={form.recipients} onChange={(event) => setForm({ ...form, recipients: event.target.value })} /></label>
@@ -502,6 +525,7 @@ function periodLabel(period: ScheduledReport['period_type']) {
   if (period === 'today') return 'Mismo día'
   if (period === 'tomorrow') return 'Día siguiente'
   if (period === 'fortnight') return 'Próximos 14 días'
+  if (period === 'next_30_days') return 'Próximos 30 días'
   if (period === 'next_31_days') return 'Próximos 31 días'
   return 'Próximos 7 días'
 }

@@ -31,3 +31,8 @@ test('el envío programado admite el período de próximos 31 días', () => {
   assert.match(source, /report\.period_type === 'next_31_days'/)
   assert.match(source, /to = addDays\(runDate, 30\)/)
 })
+
+test('el envío programado admite el período de próximos 30 días', () => {
+  assert.match(source, /report\.period_type === 'next_30_days'/)
+  assert.match(source, /to = addDays\(runDate, 29\)/)
+})

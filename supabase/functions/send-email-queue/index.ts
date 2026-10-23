@@ -236,6 +236,8 @@ async function buildReportEmail(
     to = addDays(runDate, 6)
   } else if (report.period_type === 'fortnight') {
     to = addDays(runDate, 13)
+  } else if (report.period_type === 'next_31_days') {
+    to = addDays(runDate, 30)
   }
 
   let query = supabase

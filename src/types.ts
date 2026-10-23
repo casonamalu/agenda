@@ -279,7 +279,7 @@ export interface ScheduledReport {
   weekdays: number[]
   send_time: string
   recipients: string[]
-  period_type: 'today' | 'tomorrow' | 'week' | 'fortnight' | 'next_31_days'
+  period_type: 'today' | 'tomorrow' | 'week' | 'fortnight' | 'next_30_days' | 'next_31_days'
   appointment_type_ids: string[] | null
   statuses: AppointmentStatus[] | null
   selected_fields: string[]

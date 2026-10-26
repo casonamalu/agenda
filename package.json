@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "2.110.8",
+    "pdf-lib": "1.17.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "write-excel-file": "4.1.1"

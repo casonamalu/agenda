@@ -4,19 +4,21 @@ import test from 'node:test'
 
 const source = readFileSync(new URL('../supabase/functions/send-email-queue/index.ts', import.meta.url), 'utf8')
 
-test('los reportes programados adjuntan un Excel real mediante Resend', () => {
+test('los reportes programados adjuntan Excel o PDF mediante Resend', () => {
   assert.match(source, /write-excel-file@4\.1\.1\/universal/)
+  assert.match(source, /pdf-lib@1\.17\.1/)
   assert.match(source, /attachments: email\.attachments/)
-  assert.match(source, /\.xlsx`/)
-  assert.match(source, /content: workbook/)
+  assert.match(source, /report\.output_format === 'pdf'/)
+  assert.match(source, /buildReportPdf/)
+  assert.match(source, /buildReportWorkbook/)
 })
 
-test('el Excel programado contiene las columnas solicitadas', () => {
+test('el archivo programado permite las columnas solicitadas', () => {
   for (const column of [
     'Clienta',
     'Teléfono',
-    'Tipo Cita',
-    'Fecha Cita',
+    'Tipo de cita',
+    'Fecha cita',
     'Entrega interna',
     'Fecha evento (sistema)',
     'Observación',
@@ -24,8 +26,9 @@ test('el Excel programado contiene las columnas solicitadas', () => {
     assert.match(source, new RegExp(column.replace(/[()]/g, '\\$&')))
   }
   assert.match(source, /event_date/)
-  assert.match(source, /internalDeliveryDate: addDays\(appointmentDate, -2\)/)
-  assert.doesNotMatch(source, /internalDeliveryDate: typeName === 'Entrega'/)
+  assert.match(source, /internal_delivery_date/)
+  assert.match(source, /\['Prueba 1', 'Prueba 2', 'Entrega'\]\.includes\(typeName\)/)
+  assert.match(source, /addDays\(appointmentDate, -2\)/)
 })
 
 test('el envío programado admite el período de próximos 31 días', () => {

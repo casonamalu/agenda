@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8'
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'npm:pdf-lib@1.17.1'
 import writeXlsxFile from 'npm:write-excel-file@4.1.1/universal'
 
 interface QueueItem {
@@ -219,7 +220,7 @@ async function buildReportEmail(
 
   const { data: report, error: reportError } = await supabase
     .from('scheduled_reports')
-    .select('name,period_type,appointment_type_ids,statuses,selected_fields,send_empty')
+    .select('name,period_type,appointment_type_ids,statuses,selected_fields,output_format,send_empty')
     .eq('id', item.report_id)
     .single()
 
@@ -273,35 +274,27 @@ async function buildReportEmail(
     ? report.selected_fields
     : ['date', 'time', 'appointment_type', 'client_name', 'phone', 'status']
   const fieldDefinitions = reportFieldDefinitions()
-  const visibleFields = selectedFields
+  const configuredFields = selectedFields
     .map((key) => fieldDefinitions[key])
-    .filter((field): field is { key: string; label: string } => Boolean(field))
-
-  const rows = (appointments ?? []).map((appointment) => {
-    const client = Array.isArray(appointment.client) ? appointment.client[0] : appointment.client
-    const participantClients = (appointment.participants ?? []).flatMap((participant) => {
-      const participantClient = Array.isArray(participant.client) ? participant.client[0] : participant.client
-      return participantClient ? [participantClient] : []
-    })
-    const clients = [client, ...participantClients].filter(Boolean)
-    const type = Array.isArray(appointment.appointment_type) ? appointment.appointment_type[0] : appointment.appointment_type
-    const values: Record<string, string> = {
-      date: formatReportDate(appointment.appointment_date, timezone),
-      time: `${String(appointment.start_time).slice(0, 5)}–${String(appointment.end_time).slice(0, 5)}`,
-      appointment_type: type?.name ?? '',
-      client_name: clients.map((person) => `${person?.first_name ?? ''} ${person?.last_name ?? ''}`.trim()).join(' + '),
-      phone: clients.map((person) => person?.phone ?? '').filter(Boolean).join(' · '),
-      status: statusLabel(appointment.status),
-    }
-    return `<tr>${visibleFields.map((field) => `<td style="padding:8px;border-bottom:1px solid #e4dcd7">${escapeHtml(values[field.key] ?? '')}</td>`).join('')}</tr>`
-  }).join('')
+    .filter((field): field is { key: string; label: string; width: number } => Boolean(field))
+  const visibleFields = configuredFields.length
+    ? configuredFields
+    : ['date', 'time', 'appointment_type', 'client_name', 'phone', 'status'].map((key) => fieldDefinitions[key])
+  const reportRows = buildReportRows((appointments ?? []) as Array<Record<string, unknown>>)
+  const rows = reportRows.map((row) => (
+    `<tr>${visibleFields.map((field) => `<td style="padding:8px;border-bottom:1px solid #e4dcd7">${escapeHtml(row[field.key] ?? '')}</td>`).join('')}</tr>`
+  )).join('')
 
   const periodText = from === to
     ? formatReportDate(from, timezone)
     : `${formatReportDate(from, timezone)} al ${formatReportDate(to, timezone)}`
   const businessName = stringSetting(settingsMap, 'business_name', 'Casona Malú')
   const emptyRow = `<tr><td colspan="${Math.max(1, visibleFields.length)}" style="padding:16px;text-align:center;color:#776d68">No existen citas para el período.</td></tr>`
-  const workbook = await buildReportWorkbook((appointments ?? []) as Array<Record<string, unknown>>)
+  const outputFormat = report.output_format === 'pdf' ? 'pdf' : 'xlsx'
+  const attachment = outputFormat === 'pdf'
+    ? await buildReportPdf(reportRows, visibleFields, String(report.name), periodText)
+    : await buildReportWorkbook(reportRows, visibleFields)
+  const formatLabel = outputFormat === 'pdf' ? 'PDF' : 'Excel'
 
   return {
     subject: `${report.name} – ${periodText}`,
@@ -315,26 +308,20 @@ async function buildReportEmail(
           </thead>
           <tbody>${rows || emptyRow}</tbody>
         </table>
-        <p>Se adjunta el reporte en formato Excel con el detalle de pruebas y entregas.</p>
+        <p>Se adjunta el reporte en formato ${formatLabel} con las columnas configuradas.</p>
         <p style="color:#776d68;font-size:12px">Generado automáticamente por Agenda Casona Malú.</p>
       </div>
     `,
     replyTo: stringSetting(settingsMap, 'contact_email', ''),
     attachments: [{
-      filename: `reporte-pruebas-entregas-${from}-al-${to}.xlsx`,
-      content: workbook,
+      filename: `reporte-${from}-al-${to}.${outputFormat}`,
+      content: attachment,
     }],
   }
 }
 
-async function buildReportWorkbook(appointments: Array<Record<string, unknown>>) {
-  const headerStyle = {
-    backgroundColor: '#874158',
-    color: '#FFFFFF',
-    fontWeight: 'bold' as const,
-    align: 'center' as const,
-  }
-  const rows = appointments.flatMap((appointment) => {
+function buildReportRows(appointments: Array<Record<string, unknown>>): Array<Record<string, string>> {
+  return appointments.map((appointment) => {
     const primaryClient = firstRelation(appointment.client)
     const participantClients = Array.isArray(appointment.participants)
       ? appointment.participants.flatMap((participant) => {
@@ -348,55 +335,108 @@ async function buildReportWorkbook(appointments: Array<Record<string, unknown>>)
     const typeName = String(type?.name ?? '')
     const appointmentDate = String(appointment.appointment_date ?? '')
     const eventDate = String(appointment.event_date ?? '')
+    const startTime = String(appointment.start_time ?? '').slice(0, 5)
+    const endTime = String(appointment.end_time ?? '').slice(0, 5)
 
-    return clients.map((client) => ({
-      clientName: `${String(client.first_name ?? '')} ${String(client.last_name ?? '')}`.trim(),
-      phone: String(client.phone ?? ''),
-      appointmentType: typeName === 'Entrega' ? 'Entrega cliente' : typeName,
-      appointmentDate,
-      internalDeliveryDate: addDays(appointmentDate, -2),
-      eventDate,
-    }))
-  }).sort((left, right) => (
-    left.clientName.localeCompare(right.clientName, 'es-CL')
-    || left.appointmentDate.localeCompare(right.appointmentDate)
-    || reportTypeOrder(left.appointmentType) - reportTypeOrder(right.appointmentType)
-  ))
+    return {
+      client_name: clients.map((client) => `${String(client.first_name ?? '')} ${String(client.last_name ?? '')}`.trim()).filter(Boolean).join(' + '),
+      phone: clients.map((client) => String(client.phone ?? '')).filter(Boolean).join(' · '),
+      appointment_type: typeName === 'Entrega' ? 'Entrega cliente' : typeName,
+      date: shortDate(appointmentDate),
+      time: startTime && endTime ? `${startTime}–${endTime}` : startTime,
+      internal_delivery_date: ['Prueba 1', 'Prueba 2', 'Entrega'].includes(typeName) ? shortDate(addDays(appointmentDate, -2)) : '',
+      event_date: shortDate(eventDate),
+      status: statusLabel(String(appointment.status ?? '')),
+      observation: '',
+    }
+  })
+}
 
+async function buildReportWorkbook(
+  rows: Array<Record<string, string>>,
+  fields: Array<{ key: string; label: string; width: number }>,
+) {
+  const headerStyle = {
+    backgroundColor: '#874158',
+    color: '#FFFFFF',
+    fontWeight: 'bold' as const,
+    align: 'center' as const,
+  }
   const sheetData = [
-    [
-      { value: 'Clienta', ...headerStyle },
-      { value: 'Teléfono', ...headerStyle },
-      { value: 'Tipo Cita', ...headerStyle },
-      { value: 'Fecha Cita', ...headerStyle },
-      { value: 'Entrega interna', ...headerStyle },
-      { value: 'Fecha evento (sistema)', ...headerStyle },
-      { value: 'Observación', ...headerStyle },
-    ],
-    ...rows.map((row) => [
-      { value: row.clientName },
-      { value: row.phone },
-      { value: row.appointmentType, backgroundColor: '#874158', color: '#FFFFFF', fontWeight: 'bold' as const, align: 'center' as const },
-      { value: shortDate(row.appointmentDate), backgroundColor: '#C8EBF8', fontWeight: 'bold' as const, align: 'center' as const },
-      { value: shortDate(row.internalDeliveryDate), align: 'center' as const },
-      { value: shortDate(row.eventDate), align: 'center' as const },
-      { value: '' },
-    ]),
+    fields.map((field) => ({ value: field.label, ...headerStyle })),
+    ...rows.map((row) => fields.map((field) => ({
+      value: row[field.key] ?? '',
+      align: ['date', 'time', 'internal_delivery_date', 'event_date', 'status'].includes(field.key) ? 'center' as const : 'left' as const,
+    }))),
   ]
 
   const blob = await writeXlsxFile(sheetData, {
-    columns: [
-      { width: 27 },
-      { width: 18 },
-      { width: 18 },
-      { width: 15 },
-      { width: 17 },
-      { width: 21 },
-      { width: 34 },
-    ],
-    sheet: 'Pruebas y entregas',
+    columns: fields.map((field) => ({ width: field.width })),
+    sheet: 'Reporte',
   }).toBlob()
   return bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
+}
+
+async function buildReportPdf(
+  rows: Array<Record<string, string>>,
+  fields: Array<{ key: string; label: string; width: number }>,
+  title: string,
+  periodText: string,
+) {
+  const document = await PDFDocument.create()
+  const regular = await document.embedFont(StandardFonts.Helvetica)
+  const bold = await document.embedFont(StandardFonts.HelveticaBold)
+  const pageWidth = 841.89
+  const pageHeight = 595.28
+  const margin = 28
+  const contentWidth = pageWidth - margin * 2
+  const totalWidth = fields.reduce((sum, field) => sum + field.width, 0) || 1
+  const columnWidths = fields.map((field) => contentWidth * field.width / totalWidth)
+  const rowHeight = 22
+  let page = document.addPage([pageWidth, pageHeight])
+  let y = pageHeight - margin
+
+  const drawHeading = () => {
+    page.drawText(fitPdfText(title, contentWidth, bold, 17), { x: margin, y, size: 17, font: bold, color: rgb(0.50, 0.25, 0.32) })
+    y -= 20
+    page.drawText(fitPdfText(periodText, contentWidth, regular, 10), { x: margin, y, size: 10, font: regular, color: rgb(0.38, 0.34, 0.36) })
+    y -= 20
+  }
+
+  const drawHeader = () => {
+    let x = margin
+    fields.forEach((field, index) => {
+      page.drawRectangle({ x, y: y - rowHeight + 5, width: columnWidths[index], height: rowHeight, color: rgb(0.53, 0.25, 0.35) })
+      page.drawText(fitPdfText(field.label, columnWidths[index] - 8, bold, 8), { x: x + 4, y: y - 10, size: 8, font: bold, color: rgb(1, 1, 1) })
+      x += columnWidths[index]
+    })
+    y -= rowHeight
+  }
+
+  const addPage = () => {
+    page = document.addPage([pageWidth, pageHeight])
+    y = pageHeight - margin
+    drawHeading()
+    drawHeader()
+  }
+
+  drawHeading()
+  drawHeader()
+  if (!rows.length) {
+    page.drawText('No existen citas para los filtros seleccionados.', { x: margin + 4, y: y - 12, size: 10, font: regular })
+  }
+  rows.forEach((row, rowIndex) => {
+    if (y - rowHeight < margin) addPage()
+    let x = margin
+    if (rowIndex % 2 === 1) page.drawRectangle({ x, y: y - rowHeight + 5, width: contentWidth, height: rowHeight, color: rgb(0.97, 0.95, 0.96) })
+    fields.forEach((field, index) => {
+      page.drawText(fitPdfText(row[field.key] ?? '', columnWidths[index] - 8, regular, 8), { x: x + 4, y: y - 10, size: 8, font: regular, color: rgb(0.16, 0.12, 0.14) })
+      x += columnWidths[index]
+    })
+    y -= rowHeight
+  })
+
+  return bytesToBase64(await document.save())
 }
 
 function firstRelation(value: unknown): Record<string, unknown> | null {
@@ -410,13 +450,6 @@ function shortDate(value: string) {
   return `${day}-${month}-${year}`
 }
 
-function reportTypeOrder(value: string) {
-  if (value === 'Prueba 1') return 1
-  if (value === 'Prueba 2') return 2
-  if (value === 'Entrega cliente') return 3
-  return 4
-}
-
 function bytesToBase64(bytes: Uint8Array) {
   let binary = ''
   const chunkSize = 0x8000
@@ -424,6 +457,14 @@ function bytesToBase64(bytes: Uint8Array) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
   }
   return btoa(binary)
+}
+
+function fitPdfText(value: string, maxWidth: number, font: PDFFont, size: number) {
+  const safeValue = value.replace(/[^\x00-\xff]/g, '-')
+  if (font.widthOfTextAtSize(safeValue, size) <= maxWidth) return safeValue
+  let shortened = safeValue
+  while (shortened.length && font.widthOfTextAtSize(`${shortened}...`, size) > maxWidth) shortened = shortened.slice(0, -1)
+  return `${shortened}...`
 }
 
 function render(value: string, variables: Record<string, string>) {
@@ -524,14 +565,17 @@ function formatReportDate(isoDate: string, timezone: string) {
   }).format(new Date(`${isoDate}T12:00:00Z`))
 }
 
-function reportFieldDefinitions(): Record<string, { key: string; label: string }> {
+function reportFieldDefinitions(): Record<string, { key: string; label: string; width: number }> {
   return {
-    date: { key: 'date', label: 'Fecha' },
-    time: { key: 'time', label: 'Hora' },
-    appointment_type: { key: 'appointment_type', label: 'Tipo de cita' },
-    client_name: { key: 'client_name', label: 'Cliente' },
-    phone: { key: 'phone', label: 'Teléfono' },
-    status: { key: 'status', label: 'Estado' },
+    client_name: { key: 'client_name', label: 'Clienta', width: 27 },
+    phone: { key: 'phone', label: 'Teléfono', width: 18 },
+    appointment_type: { key: 'appointment_type', label: 'Tipo de cita', width: 18 },
+    date: { key: 'date', label: 'Fecha cita', width: 15 },
+    time: { key: 'time', label: 'Horario', width: 15 },
+    internal_delivery_date: { key: 'internal_delivery_date', label: 'Entrega interna', width: 17 },
+    event_date: { key: 'event_date', label: 'Fecha evento (sistema)', width: 21 },
+    status: { key: 'status', label: 'Estado', width: 15 },
+    observation: { key: 'observation', label: 'Observación', width: 34 },
   }
 }
 

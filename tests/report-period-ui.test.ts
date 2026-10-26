@@ -26,3 +26,9 @@ test('permite configurar formato y columnas del archivo enviado', () => {
   assert.match(source, /Columnas del reporte/)
   assert.match(source, /Fecha de Prueba o Entrega − 2 días/)
 })
+
+test('permite activar o desactivar una programación desde la lista', () => {
+  assert.match(source, /toggleReportActive/)
+  assert.match(source, /report\.active \? 'Desactivar' : 'Activar'/)
+  assert.match(source, /Reporte activado correctamente/)
+})

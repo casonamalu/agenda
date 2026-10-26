@@ -283,6 +283,7 @@ export interface ScheduledReport {
   appointment_type_ids: string[] | null
   statuses: AppointmentStatus[] | null
   selected_fields: string[]
+  output_format: 'xlsx' | 'pdf'
   send_empty: boolean
   created_by: string | null
   created_at: string

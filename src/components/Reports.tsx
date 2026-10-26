@@ -1,13 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import type { Column } from 'write-excel-file/browser'
-import { chileIsoDate, daysBetweenIso, reportDateRange } from '../lib/business'
-import {
-  buildFollowUpReportRows,
-  FOLLOW_UP_APPOINTMENT_TYPES,
-  formatShortReportDate,
-  type FollowUpReportAppointment,
-  type FollowUpReportRow,
-} from '../lib/followUpReport'
+import { reportDateRange } from '../lib/business'
 import { supabase } from '../lib/supabase'
 import type { AppointmentStatus, AppointmentType, Profile, ScheduledReport } from '../types'
 
@@ -26,11 +18,14 @@ interface ReportForm {
   period_type: ScheduledReport['period_type']
   appointment_type_ids: string[]
   statuses: AppointmentStatus[]
+  selected_fields: ReportFieldKey[]
+  output_format: ScheduledReport['output_format']
   send_empty: boolean
 }
 
 interface PrintableAppointment {
   appointment_date: string
+  event_date: string | null
   start_time: string
   end_time: string
   status: AppointmentStatus
@@ -39,7 +34,29 @@ interface PrintableAppointment {
   appointment_type: { name: string } | null
 }
 
-type FollowUpPeriod = 'custom' | 'today' | 'week' | 'fortnight' | 'next_30_days'
+type ReportFieldKey = 'client_name' | 'phone' | 'appointment_type' | 'date' | 'time' | 'internal_delivery_date' | 'event_date' | 'status' | 'observation'
+
+const reportFieldOptions: Array<{ value: ReportFieldKey; label: string; help?: string }> = [
+  { value: 'client_name', label: 'Clienta' },
+  { value: 'phone', label: 'Teléfono' },
+  { value: 'appointment_type', label: 'Tipo de cita' },
+  { value: 'date', label: 'Fecha de la cita' },
+  { value: 'time', label: 'Horario' },
+  { value: 'internal_delivery_date', label: 'Entrega interna', help: 'Fecha de Prueba o Entrega − 2 días' },
+  { value: 'event_date', label: 'Fecha del evento (sistema)' },
+  { value: 'status', label: 'Estado' },
+  { value: 'observation', label: 'Observación' },
+]
+
+const defaultReportFields: ReportFieldKey[] = [
+  'client_name',
+  'phone',
+  'appointment_type',
+  'date',
+  'internal_delivery_date',
+  'event_date',
+  'observation',
+]
 
 const weekdays = [
   { value: 1, label: 'Lunes' },
@@ -66,6 +83,8 @@ const initialForm: ReportForm = {
   period_type: 'tomorrow',
   appointment_type_ids: [],
   statuses: ['scheduled', 'rescheduled'],
+  selected_fields: defaultReportFields,
+  output_format: 'xlsx',
   send_empty: false,
 }
 
@@ -77,12 +96,6 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
-  const [followUpPeriod, setFollowUpPeriod] = useState<FollowUpPeriod>('custom')
-  const [followUpFrom, setFollowUpFrom] = useState(() => chileIsoDate())
-  const [followUpTo, setFollowUpTo] = useState(() => addIsoDays(chileIsoDate(), 14))
-  const [followUpRows, setFollowUpRows] = useState<FollowUpReportRow[]>([])
-  const [followUpLoading, setFollowUpLoading] = useState(false)
-  const [followUpSearched, setFollowUpSearched] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
 
@@ -133,14 +146,13 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
     }))
   }
 
-  function changeFollowUpPeriod(period: FollowUpPeriod) {
-    setFollowUpPeriod(period)
-    if (period === 'custom') return
-
-    const today = chileIsoDate()
-    const days = period === 'today' ? 0 : period === 'week' ? 6 : period === 'fortnight' ? 13 : 29
-    setFollowUpFrom(today)
-    setFollowUpTo(addIsoDays(today, days))
+  function toggleReportField(field: ReportFieldKey) {
+    setForm((current) => ({
+      ...current,
+      selected_fields: current.selected_fields.includes(field)
+        ? current.selected_fields.filter((item) => item !== field)
+        : [...current.selected_fields, field],
+    }))
   }
 
   async function saveReport(event: FormEvent) {
@@ -153,8 +165,8 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean))]
 
-    if (!form.name.trim() || !form.weekdays.length || !form.statuses.length) {
-      setError('Completa el nombre y selecciona al menos un día y un estado.')
+    if (!form.name.trim() || !form.weekdays.length || !form.statuses.length || !form.selected_fields.length) {
+      setError('Completa el nombre y selecciona al menos un día, un estado y una columna.')
       return
     }
     if (!recipients.length || recipients.some((email) => !email.includes('@'))) {
@@ -171,7 +183,8 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
       period_type: form.period_type,
       appointment_type_ids: form.appointment_type_ids.length ? form.appointment_type_ids : null,
       statuses: form.statuses,
-      selected_fields: ['date', 'time', 'appointment_type', 'client_name', 'phone', 'status'],
+      selected_fields: form.selected_fields,
+      output_format: form.output_format,
       send_empty: form.send_empty,
       created_by: profile.id,
     }
@@ -207,6 +220,8 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
       period_type: report.period_type,
       appointment_type_ids: report.appointment_type_ids ?? [],
       statuses: report.statuses ?? ['scheduled', 'rescheduled'],
+      selected_fields: report.selected_fields.filter((field): field is ReportFieldKey => reportFieldOptions.some((option) => option.value === field)),
+      output_format: report.output_format ?? 'xlsx',
       send_empty: report.send_empty,
     })
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -239,7 +254,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
     const range = reportDateRange(report.period_type)
     let query = supabase
       .from('appointments')
-      .select('appointment_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
+      .select('appointment_date,event_date,start_time,end_time,status,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
       .gte('appointment_date', range.from)
       .lte('appointment_date', range.to)
       .order('appointment_date')
@@ -267,83 +282,6 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
     setNotice('Vista previa generada. En el diálogo de impresión selecciona “Guardar como PDF”.')
   }
 
-  async function generateFollowUpReport(event?: FormEvent) {
-    event?.preventDefault()
-    setError('')
-    setNotice('')
-
-    if (!followUpFrom || !followUpTo || followUpFrom > followUpTo) {
-      setError('Selecciona un rango de fechas válido.')
-      return
-    }
-    if (daysBetweenIso(followUpFrom, followUpTo) > 366) {
-      setError('El reporte permite consultar como máximo 367 días por vez.')
-      return
-    }
-
-    const typeIds = appointmentTypes
-      .filter((type) => FOLLOW_UP_APPOINTMENT_TYPES.includes(type.name as typeof FOLLOW_UP_APPOINTMENT_TYPES[number]))
-      .map((type) => type.id)
-    if (!typeIds.length) {
-      setError('No se encontraron los tipos Prueba 1, Prueba 2 o Entrega.')
-      return
-    }
-
-    setFollowUpLoading(true)
-    const { data, error: reportError } = await supabase
-      .from('appointments')
-      .select('appointment_date,event_date,client:clients(first_name,last_name,phone),participants:appointment_participants(client:clients(first_name,last_name,phone)),appointment_type:appointment_types(name)')
-      .in('appointment_type_id', typeIds)
-      .in('status', ['scheduled', 'rescheduled'])
-      .gte('appointment_date', followUpFrom)
-      .lte('appointment_date', followUpTo)
-      .order('appointment_date')
-      .order('start_time')
-    setFollowUpLoading(false)
-    setFollowUpSearched(true)
-
-    if (reportError) {
-      setFollowUpRows([])
-      setError(reportError.message)
-      return
-    }
-
-    const rows = buildFollowUpReportRows((data ?? []) as unknown as FollowUpReportAppointment[])
-    setFollowUpRows(rows)
-    setNotice(`Reporte generado con ${rows.length} fila${rows.length === 1 ? '' : 's'}.`)
-  }
-
-  async function exportFollowUpXlsx() {
-    const { default: writeXlsxFile } = await import('write-excel-file/browser')
-    const columns: Column<FollowUpReportRow>[] = [
-      { header: 'Clienta', cell: (row) => row.clientName, width: 27 },
-      { header: 'Teléfono', cell: (row) => row.phone, width: 18 },
-      { header: 'Tipo Cita', cell: (row) => row.appointmentType, width: 18 },
-      { header: 'Fecha Cita', cell: (row) => formatShortReportDate(row.appointmentDate), width: 15 },
-      { header: 'Entrega interna', cell: (row) => formatShortReportDate(row.internalDeliveryDate), width: 17 },
-      { header: 'Fecha evento (sistema)', cell: (row) => formatShortReportDate(row.eventDate), width: 21 },
-      { header: 'Observación', cell: (row) => row.observation, width: 34 },
-    ]
-    await writeXlsxFile(followUpRows, { columns, sheet: 'Pruebas y entregas' })
-      .toFile(`reporte-pruebas-entregas-${followUpFrom}-al-${followUpTo}.xlsx`)
-    onChanged(`Se exportaron ${followUpRows.length} filas a Excel.`)
-  }
-
-  function printFollowUpReport() {
-    const preview = window.open('', '_blank', 'width=1100,height=800')
-    if (!preview) {
-      setError('El navegador bloqueó la vista previa. Habilita las ventanas emergentes e inténtalo nuevamente.')
-      return
-    }
-    preview.document.open()
-    preview.document.write(followUpDocument(followUpRows, followUpFrom, followUpTo))
-    preview.document.close()
-    window.setTimeout(() => {
-      preview.focus()
-      preview.print()
-    }, 300)
-  }
-
   return (
     <section className="page-section">
       <div className="page-heading">
@@ -355,60 +293,6 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
 
       {error && <div className="alert alert-danger">{error}</div>}
       {notice && <div className="alert alert-success">{notice}</div>}
-
-      <section className="settings-card follow-up-report" aria-labelledby="follow-up-report-title">
-        <div className="page-heading">
-          <div>
-            <h2 id="follow-up-report-title">Reporte de pruebas y entregas</h2>
-            <p>Una fila por cita. La entrega interna se calcula dos días antes de la entrega a la clienta.</p>
-          </div>
-          <div className="action-row">
-            <button className="btn btn-secondary" type="button" disabled={!followUpRows.length} onClick={printFollowUpReport}>Generar PDF</button>
-            <button className="btn btn-primary" type="button" disabled={!followUpRows.length} onClick={() => void exportFollowUpXlsx()}>Exportar Excel</button>
-          </div>
-        </div>
-
-        <form className="follow-up-filters" onSubmit={generateFollowUpReport}>
-          <label>
-            Período
-            <select value={followUpPeriod} onChange={(event) => changeFollowUpPeriod(event.target.value as FollowUpPeriod)}>
-              <option value="custom">Personalizado</option>
-              <option value="today">Hoy</option>
-              <option value="week">Próximos 7 días</option>
-              <option value="fortnight">Próximos 14 días</option>
-              <option value="next_30_days">Próximos 30 días</option>
-            </select>
-          </label>
-          <label>Desde<input required type="date" value={followUpFrom} onChange={(event) => { setFollowUpFrom(event.target.value); setFollowUpPeriod('custom') }} /></label>
-          <label>Hasta<input required type="date" value={followUpTo} onChange={(event) => { setFollowUpTo(event.target.value); setFollowUpPeriod('custom') }} /></label>
-          <button className="btn btn-primary" type="submit" disabled={followUpLoading || loading}>
-            {followUpLoading ? 'Consultando…' : 'Consultar reporte'}
-          </button>
-        </form>
-
-        {followUpRows.length ? (
-          <div className="table-card follow-up-table-card">
-            <table className="follow-up-table">
-              <thead><tr><th>Clienta</th><th>Teléfono</th><th>Tipo Cita</th><th>Fecha Cita</th><th>Entrega interna</th><th>Fecha evento (sistema)</th><th>Observación</th></tr></thead>
-              <tbody>
-                {followUpRows.map((row, index) => (
-                  <tr key={`${row.clientName}-${row.appointmentDate}-${row.appointmentType}-${index}`}>
-                    <td>{row.clientName}</td>
-                    <td>{row.phone || '—'}</td>
-                    <td className="follow-up-type">{row.appointmentType}</td>
-                    <td className="follow-up-date">{formatShortReportDate(row.appointmentDate)}</td>
-                    <td>{formatShortReportDate(row.internalDeliveryDate) || '—'}</td>
-                    <td>{formatShortReportDate(row.eventDate) || '—'}</td>
-                    <td aria-label="Observación en blanco" />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : followUpSearched ? (
-          <div className="empty-state">No existen pruebas ni entregas en el período seleccionado.</div>
-        ) : null}
-      </section>
 
       <form className="settings-card report-form" onSubmit={saveReport}>
         <div className="page-heading">
@@ -434,6 +318,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
               <option value="week">Próximos 7 días</option>
               <option value="fortnight">Próximos 14 días</option>
               <option value="next_30_days">Próximos 30 días</option>
+              <option value="next_31_days">Próximos 31 días</option>
             </select>
           </label>
           <label className="span-two">Destinatarios<input required placeholder="correo1@dominio.cl, correo2@dominio.cl" value={form.recipients} onChange={(event) => setForm({ ...form, recipients: event.target.value })} /></label>
@@ -480,6 +365,33 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
           </div>
         </fieldset>
 
+        <fieldset className="form-section">
+          <legend>Formato de envío</legend>
+          <div className="report-format-grid">
+            <label className={`report-format-option ${form.output_format === 'xlsx' ? 'selected' : ''}`}>
+              <input type="radio" name="output-format" checked={form.output_format === 'xlsx'} onChange={() => setForm({ ...form, output_format: 'xlsx' })} />
+              <span><strong>Excel</strong><small>Archivo .xlsx editable</small></span>
+            </label>
+            <label className={`report-format-option ${form.output_format === 'pdf' ? 'selected' : ''}`}>
+              <input type="radio" name="output-format" checked={form.output_format === 'pdf'} onChange={() => setForm({ ...form, output_format: 'pdf' })} />
+              <span><strong>PDF</strong><small>Documento listo para imprimir</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset className="form-section">
+          <legend>Columnas del reporte</legend>
+          <p className="form-help">Marca las columnas que debe incluir el archivo enviado.</p>
+          <div className="report-column-grid">
+            {reportFieldOptions.map((field) => (
+              <label className="report-column-option" key={field.value}>
+                <input type="checkbox" checked={form.selected_fields.includes(field.value)} onChange={() => toggleReportField(field.value)} />
+                <span><strong>{field.label}</strong>{field.help && <small>{field.help}</small>}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
         <button className="btn btn-primary" disabled={saving} type="submit">
           {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Programar reporte'}
         </button>
@@ -500,6 +412,8 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
                     <small>{report.appointment_type_ids?.length
                       ? report.appointment_type_ids.map((id) => appointmentTypeNames.get(id) ?? 'Tipo eliminado').join(', ')
                       : 'Todos los tipos'}</small>
+                    <br />
+                    <small>{(report.output_format ?? 'xlsx').toUpperCase()} · {report.selected_fields.length} columnas</small>
                   </td>
                   <td>{report.recipients.join(', ')}</td>
                   <td><span className={`badge ${report.active ? 'badge-success' : 'badge-muted'}`}>{report.active ? 'Activo' : 'Inactivo'}</span></td>
@@ -535,20 +449,29 @@ function reportDocument(
   appointments: PrintableAppointment[],
   range: { from: string; to: string },
 ) {
+  const selectedFields = report.selected_fields
+    .map((key) => reportFieldOptions.find((field) => field.value === key))
+    .filter((field): field is (typeof reportFieldOptions)[number] => Boolean(field))
   const rows = appointments.map((appointment) => {
     const clients = [appointment.client, ...(appointment.participants ?? []).map((item) => item.client)].filter(Boolean)
     const names = clients.map((client) => `${client?.first_name ?? ''} ${client?.last_name ?? ''}`.trim()).join(' + ')
     const phones = clients.map((client) => client?.phone ?? '').filter(Boolean).join(' · ')
-    return `
-    <tr>
-      <td>${escapeHtml(formatPdfDate(appointment.appointment_date))}</td>
-      <td>${escapeHtml(appointment.start_time.slice(0, 5))}</td>
-      <td>${escapeHtml(appointment.appointment_type?.name ?? '—')}</td>
-      <td>${escapeHtml(names || '—')}</td>
-      <td>${escapeHtml(phones || '—')}</td>
-      <td>${escapeHtml(statusLabel(appointment.status))}</td>
-    </tr>
-  `}).join('')
+    const typeName = appointment.appointment_type?.name ?? ''
+    const values: Record<ReportFieldKey, string> = {
+      client_name: names,
+      phone: phones,
+      appointment_type: typeName === 'Entrega' ? 'Entrega cliente' : typeName,
+      date: formatPdfDate(appointment.appointment_date),
+      time: `${appointment.start_time.slice(0, 5)}–${appointment.end_time.slice(0, 5)}`,
+      internal_delivery_date: ['Prueba 1', 'Prueba 2', 'Entrega'].includes(typeName)
+        ? formatPdfDate(addIsoDays(appointment.appointment_date, -2))
+        : '',
+      event_date: appointment.event_date ? formatPdfDate(appointment.event_date) : '',
+      status: statusLabel(appointment.status),
+      observation: '',
+    }
+    return `<tr>${selectedFields.map((field) => `<td>${escapeHtml(values[field.value] || '—')}</td>`).join('')}</tr>`
+  }).join('')
 
   return `<!doctype html>
   <html lang="es">
@@ -571,56 +494,8 @@ function reportDocument(
       <h1>${escapeHtml(report.name)}</h1>
       <p class="meta">${escapeHtml(periodLabel(report.period_type))} · ${escapeHtml(formatPdfDate(range.from))} al ${escapeHtml(formatPdfDate(range.to))} · ${appointments.length} cita${appointments.length === 1 ? '' : 's'}</p>
       <table>
-        <thead><tr><th>Fecha</th><th>Hora</th><th>Tipo</th><th>Cliente</th><th>Teléfono</th><th>Estado</th></tr></thead>
-        <tbody>${rows || '<tr><td class="empty" colspan="6">No existen citas para los filtros seleccionados.</td></tr>'}</tbody>
-      </table>
-    </body>
-  </html>`
-}
-
-function followUpDocument(rows: FollowUpReportRow[], from: string, to: string) {
-  const body = rows.map((row) => `
-    <tr>
-      <td>${escapeHtml(row.clientName)}</td>
-      <td>${escapeHtml(row.phone || '—')}</td>
-      <td class="type">${escapeHtml(row.appointmentType)}</td>
-      <td class="date">${escapeHtml(formatShortReportDate(row.appointmentDate))}</td>
-      <td>${escapeHtml(formatShortReportDate(row.internalDeliveryDate))}</td>
-      <td>${escapeHtml(formatShortReportDate(row.eventDate))}</td>
-      <td></td>
-    </tr>
-  `).join('')
-
-  return `<!doctype html>
-  <html lang="es">
-    <head>
-      <meta charset="utf-8" />
-      <title>Reporte de pruebas y entregas</title>
-      <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        body { color: #291f23; font-family: Arial, sans-serif; font-size: 10px; }
-        h1 { color: #7f3f52; font-size: 20px; margin: 0 0 4px; }
-        p { color: #675b60; margin: 0 0 12px; }
-        table { border-collapse: collapse; table-layout: fixed; width: 100%; }
-        th, td { border: 1px solid #d9d9d9; padding: 6px 5px; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
-        th { background: #874158; color: #fff; font-size: 10px; text-align: center; }
-        td.type { background: #874158; color: #fff; font-weight: 700; text-align: center; }
-        td.date { background: #bfe5f5; text-align: center; }
-        th:nth-child(1) { width: 18%; }
-        th:nth-child(2) { width: 15%; }
-        th:nth-child(3) { width: 12%; }
-        th:nth-child(4), th:nth-child(5) { width: 13%; }
-        th:nth-child(6) { width: 15%; }
-        th:nth-child(7) { width: 14%; }
-        .empty { padding: 24px; text-align: center; color: #675b60; }
-      </style>
-    </head>
-    <body>
-      <h1>Reporte de pruebas y entregas</h1>
-      <p>${escapeHtml(formatShortReportDate(from))} al ${escapeHtml(formatShortReportDate(to))} · ${rows.length} fila${rows.length === 1 ? '' : 's'}</p>
-      <table>
-        <thead><tr><th>Clienta</th><th>Teléfono</th><th>Tipo Cita</th><th>Fecha Cita</th><th>Entrega interna</th><th>Fecha evento (sistema)</th><th>Observación</th></tr></thead>
-        <tbody>${body || '<tr><td class="empty" colspan="7">No existen citas para el período seleccionado.</td></tr>'}</tbody>
+        <thead><tr>${selectedFields.map((field) => `<th>${escapeHtml(field.label)}</th>`).join('')}</tr></thead>
+        <tbody>${rows || `<tr><td class="empty" colspan="${Math.max(1, selectedFields.length)}">No existen citas para los filtros seleccionados.</td></tr>`}</tbody>
       </table>
     </body>
   </html>`

@@ -235,9 +235,33 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
       setError(deleteError.message)
       return
     }
+    if (editingId === id) {
+      setEditingId(null)
+      setForm(initialForm)
+    }
     await loadData()
     setNotice('La programación fue eliminada.')
     onChanged('Reporte eliminado.')
+  }
+
+  async function toggleReportActive(report: ScheduledReport) {
+    setError('')
+    setNotice('')
+    const nextActive = !report.active
+    const { error: updateError } = await supabase
+      .from('scheduled_reports')
+      .update({ active: nextActive })
+      .eq('id', report.id)
+
+    if (updateError) {
+      setError(updateError.message)
+      return
+    }
+
+    await loadData()
+    const message = nextActive ? 'Reporte activado correctamente.' : 'Reporte desactivado correctamente.'
+    setNotice(message)
+    onChanged(message)
   }
 
   async function generatePdf(report: ScheduledReport) {
@@ -420,6 +444,7 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
                   <td>
                     <div className="table-actions">
                       <button className="btn btn-primary btn-sm" type="button" disabled={generatingId === report.id} onClick={() => void generatePdf(report)}>{generatingId === report.id ? 'Generando…' : 'Generar PDF'}</button>
+                      <button className={`btn ${report.active ? 'btn-secondary' : 'btn-primary'} btn-sm`} type="button" onClick={() => void toggleReportActive(report)}>{report.active ? 'Desactivar' : 'Activar'}</button>
                       <button className="btn btn-secondary btn-sm" type="button" onClick={() => editReport(report)}>Editar</button>
                       <button className="btn btn-danger btn-sm" type="button" onClick={() => void deleteReport(report.id)}>Eliminar</button>
                     </div>

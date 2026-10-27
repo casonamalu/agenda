@@ -286,6 +286,22 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .report-format-option span, .report-column-option span { display: grid; gap: 3px; }
 .report-format-option small, .report-column-option small { color: var(--muted); font-size: 11px; }
 .report-column-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 10px; }
+.drive-sync-card { display: grid; gap: 16px; margin-bottom: 16px; }
+.drive-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.drive-title-row h2 { margin: 0; }
+.drive-sync-meta { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; }
+.drive-sync-meta > div { display: grid; gap: 4px; padding: 12px; border: 1px solid var(--line); border-radius: 11px; background: #faf8f7; }
+.drive-sync-meta span, .drive-sync-actions > span { color: var(--muted); font-size: 12px; }
+.drive-sync-meta strong { font-size: 13px; }
+.drive-sync-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.drive-last-error { color: var(--danger); font-size: 12px; }
+.drive-preview { display: grid; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+.drive-preview h3 { margin-bottom: 4px; }
+.drive-summary { display: flex; flex-wrap: wrap; gap: 8px; }
+.drive-summary span { padding: 7px 10px; border-radius: 999px; background: #f2eeec; font-size: 12px; }
+.drive-summary span.has-error { color: var(--danger); background: #fff0f0; }
+.drive-preview-table { max-height: 420px; overflow: auto; }
+.text-danger { color: var(--danger); }
 
 /* Release 3: pedidos, caja y taller */
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: 0 8px 26px rgba(69,48,40,.05); }
@@ -434,6 +450,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
   .inline-form { display: grid; }
   .choice-grid { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
   .report-format-grid, .report-column-grid { grid-template-columns: 1fr; }
+  .drive-sync-meta { grid-template-columns: 1fr; }
   .two-column-layout, .split-workspace, .four-metrics, .capacity-week-grid { grid-template-columns: 1fr; }
   .order-list-panel { position: static; max-height: none; }
   .workshop-order-card, .inline-cost-form { grid-template-columns: 1fr; }

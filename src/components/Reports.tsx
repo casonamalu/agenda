@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { reportDateRange } from '../lib/business'
 import { supabase } from '../lib/supabase'
 import type { AppointmentStatus, AppointmentType, Profile, ScheduledReport } from '../types'
+import { GoogleDriveSync } from './GoogleDriveSync'
 
 interface Props {
   profile: Profile
@@ -317,6 +318,8 @@ export function Reports({ profile, refreshToken, onChanged }: Props) {
 
       {error && <div className="alert alert-danger">{error}</div>}
       {notice && <div className="alert alert-success">{notice}</div>}
+
+      <GoogleDriveSync refreshToken={refreshToken} onChanged={onChanged} />
 
       <form className="settings-card report-form" onSubmit={saveReport}>
         <div className="page-heading">

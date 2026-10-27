@@ -221,7 +221,14 @@ export function GoogleDriveSync({ refreshToken, onChanged }: Props) {
 }
 
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const item = error as { message?: unknown; error?: unknown }
+    if (typeof item.error === 'string') return item.error
+    if (typeof item.message === 'string') return item.message
+    try { return JSON.stringify(error) } catch { return 'Ocurrió un error inesperado' }
+  }
+  return String(error)
 }
 
 function formatTimestamp(value: string | null | undefined) {

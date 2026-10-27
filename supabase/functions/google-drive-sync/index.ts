@@ -198,6 +198,7 @@ async function pushSystemToDrive(
     const { data: appointments, error } = await service
       .from('appointments')
       .select('id,appointment_date,event_date,start_time,status,internal_notes,workshop_observation,spreadsheet_status,updated_at,client:clients(id,first_name,last_name),appointment_type:appointment_types(name),order:orders!appointments_order_id_fkey(order_sequence)')
+      .neq('status', 'cancelled')
       .order('appointment_date', { ascending: true })
       .order('start_time', { ascending: true })
     if (error) throw error

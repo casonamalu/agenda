@@ -26,6 +26,7 @@ test('la carga usa los RPC normales, conserva IDs ocultos y protege cambios de c
   assert.match(edge, /isHardBlockReason/)
   assert.match(edge, /orders!appointments_order_id_fkey/)
   assert.match(edge, /formatError/)
+  assert.match(edge, /\.neq\('status', 'cancelled'\)/)
 })
 
 test('la migración registra la conexión, la bitácora y los campos de taller', async () => {

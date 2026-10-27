@@ -87,7 +87,7 @@ Deno.serve(async (request) => {
     return json({ error: 'Acción no válida' }, 400)
   } catch (error) {
     console.error(error)
-    return json({ error: error instanceof Error ? error.message : String(error) }, 400)
+    return json({ error: formatError(error) }, 400)
   }
 })
 
@@ -197,7 +197,7 @@ async function pushSystemToDrive(
 
     const { data: appointments, error } = await service
       .from('appointments')
-      .select('id,appointment_date,event_date,start_time,status,internal_notes,workshop_observation,spreadsheet_status,updated_at,client:clients(id,first_name,last_name),appointment_type:appointment_types(name),order:orders(order_sequence)')
+      .select('id,appointment_date,event_date,start_time,status,internal_notes,workshop_observation,spreadsheet_status,updated_at,client:clients(id,first_name,last_name),appointment_type:appointment_types(name),order:orders!appointments_order_id_fkey(order_sequence)')
       .order('appointment_date', { ascending: true })
       .order('start_time', { ascending: true })
     if (error) throw error
@@ -472,9 +472,22 @@ async function finishRun(runId: string, status: string, fields: Record<string, u
 }
 
 async function failRun(runId: string, error: unknown) {
-  const message = error instanceof Error ? error.message : String(error)
+  const message = formatError(error)
   await finishRun(runId, 'failed', { error_count: 1, error_message: message })
   await service.from('google_drive_sync_config').update({ last_error: message }).eq('id', 1)
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object') {
+    const item = error as { message?: unknown; hint?: unknown; details?: unknown; code?: unknown }
+    const parts = [item.message, item.hint, item.details, item.code]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .map(String)
+    if (parts.length) return parts.join(' · ')
+    try { return JSON.stringify(error) } catch { return 'Error desconocido' }
+  }
+  return String(error)
 }
 
 function sheetStatus(status: string, spreadsheetStatus: string | null) {

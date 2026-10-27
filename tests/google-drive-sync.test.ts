@@ -24,6 +24,8 @@ test('la carga usa los RPC normales, conserva IDs ocultos y protege cambios de c
   assert.match(edge, /ID cita \(sistema\)/)
   assert.match(edge, /No se puede cambiar la clienta de una cita existente/)
   assert.match(edge, /isHardBlockReason/)
+  assert.match(edge, /orders!appointments_order_id_fkey/)
+  assert.match(edge, /formatError/)
 })
 
 test('la migración registra la conexión, la bitácora y los campos de taller', async () => {

@@ -381,7 +381,7 @@ async function refreshCalendarAndControl(
   await sheetsRequest(config.spreadsheet_id, '/values:batchUpdate', {
     method: 'POST',
     body: JSON.stringify({
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       data: [
         ...(calendarData.rows.length ? [{ range: `'CALENDARIO'!A1:G${calendarData.rows.length}`, values: calendarData.rows }] : []),
         { range: "'SINCRONIZACIÓN'!A1:G13", values: controlRows },

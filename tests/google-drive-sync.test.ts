@@ -27,6 +27,25 @@ test('la carga usa los RPC normales, conserva IDs ocultos y protege cambios de c
   assert.match(edge, /orders!appointments_order_id_fkey/)
   assert.match(edge, /formatError/)
   assert.match(edge, /\.neq\('status', 'cancelled'\)/)
+  assert.match(edge, /CALENDARIO/)
+  assert.match(edge, /SINCRONIZACIÓN/)
+  assert.match(edge, /sheetDateNumber/)
+  assert.match(edge, /x-google-apps-script/)
+})
+
+test('los controles directos validan administradora y confirman antes de cargar', async () => {
+  const script = await readFile(new URL('google-apps-script/Code.gs', root), 'utf8')
+  const manifest = await readFile(new URL('google-apps-script/appsscript.json', root), 'utf8')
+  const migration = await readFile(new URL('supabase/migrations/20261028014917_google_sheets_direct_controls.sql', root), 'utf8')
+
+  assert.match(script, /function actualizarExcel\(/)
+  assert.match(script, /function cargarExcel\(/)
+  assert.match(script, /ButtonSet\.YES_NO/)
+  assert.match(script, /X-Google-Apps-Script/)
+  assert.match(manifest, /userinfo\.email/)
+  assert.match(migration, /apply_google_sheet_action_v1/)
+  assert.match(migration, /grant execute[\s\S]*to service_role/)
+  assert.match(migration, /revoke all[\s\S]*from public, anon, authenticated/)
 })
 
 test('la migración registra la conexión, la bitácora y los campos de taller', async () => {

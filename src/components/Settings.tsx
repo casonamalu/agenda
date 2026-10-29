@@ -33,8 +33,6 @@ interface CapacitySettings {
   appointment_max_duration_minutes: string
   business_day_start: string
   business_day_end: string
-  business_break_start: string
-  business_break_end: string
 }
 
 interface OperationsSettings {
@@ -74,8 +72,6 @@ const initialCapacitySettings: CapacitySettings = {
   appointment_max_duration_minutes: '240',
   business_day_start: '10:00',
   business_day_end: '19:00',
-  business_break_start: '14:00',
-  business_break_end: '15:00',
 }
 const initialOperationsSettings: OperationsSettings = {
   workshop_default_weekly_hours: '40',
@@ -147,8 +143,6 @@ export function Settings({ refreshToken, onChanged }: Props) {
       appointment_max_duration_minutes: String(settingsMap.appointment_max_duration_minutes ?? initialCapacitySettings.appointment_max_duration_minutes),
       business_day_start: stringValue(settingsMap.business_day_start, initialCapacitySettings.business_day_start),
       business_day_end: stringValue(settingsMap.business_day_end, initialCapacitySettings.business_day_end),
-      business_break_start: stringValue(settingsMap.business_break_start, initialCapacitySettings.business_break_start),
-      business_break_end: stringValue(settingsMap.business_break_end, initialCapacitySettings.business_break_end),
     })
     setNotificationSettings({
       business_name: stringValue(settingsMap.business_name, initialNotificationSettings.business_name),
@@ -364,8 +358,7 @@ export function Settings({ refreshToken, onChanged }: Props) {
       setError(`La duración máxima no puede ser inferior a la duración base más larga (${longestBaseDuration} minutos).`)
       return
     }
-    if (capacitySettings.business_day_start >= capacitySettings.business_day_end
-      || capacitySettings.business_break_start >= capacitySettings.business_break_end) {
+    if (capacitySettings.business_day_start >= capacitySettings.business_day_end) {
       setError('La hora de inicio debe ser anterior a la hora de término.')
       return
     }
@@ -379,8 +372,6 @@ export function Settings({ refreshToken, onChanged }: Props) {
       { setting_key: 'appointment_max_duration_minutes', setting_value: maximumDuration, description: 'Duración máxima de una cita extendida' },
       { setting_key: 'business_day_start', setting_value: capacitySettings.business_day_start, description: 'Inicio de la jornada' },
       { setting_key: 'business_day_end', setting_value: capacitySettings.business_day_end, description: 'Término de la jornada' },
-      { setting_key: 'business_break_start', setting_value: capacitySettings.business_break_start, description: 'Inicio del horario de almuerzo' },
-      { setting_key: 'business_break_end', setting_value: capacitySettings.business_break_end, description: 'Término del horario de almuerzo' },
     ]
     const { error: saveError } = await supabase.from('app_settings').upsert(rows, { onConflict: 'setting_key' })
     setSavingCapacity(false)
@@ -523,16 +514,13 @@ export function Settings({ refreshToken, onChanged }: Props) {
           </article>
           <article className="settings-card">
             <h2>Citas extendidas y jornada</h2>
-            <p>Estos parámetros permiten reservar más de una hora sin modificar el código. El sistema valida todo el intervalo y evita cruces con otras citas o con el almuerzo.</p>
+            <p>Estos parámetros permiten reservar más de una hora sin modificar el código. El sistema valida todo el intervalo dentro de la jornada y evita cruces con otras citas.</p>
             <div className="form-grid three-columns">
               <label>Incremento de duración (min)<input required type="number" min="5" max="60" value={capacitySettings.appointment_duration_step_minutes} onChange={(event) => updateCapacitySetting('appointment_duration_step_minutes', event.target.value)} /><small>Ejemplo: 15 permite 45, 60, 75, 90…</small></label>
               <label>Duración máxima (min)<input required type="number" min="30" max="480" value={capacitySettings.appointment_max_duration_minutes} onChange={(event) => updateCapacitySetting('appointment_max_duration_minutes', event.target.value)} /></label>
               <span />
               <label>Inicio jornada<input required type="time" value={capacitySettings.business_day_start} onChange={(event) => updateCapacitySetting('business_day_start', event.target.value)} /></label>
               <label>Término jornada<input required type="time" value={capacitySettings.business_day_end} onChange={(event) => updateCapacitySetting('business_day_end', event.target.value)} /></label>
-              <span />
-              <label>Inicio almuerzo<input required type="time" value={capacitySettings.business_break_start} onChange={(event) => updateCapacitySetting('business_break_start', event.target.value)} /></label>
-              <label>Término almuerzo<input required type="time" value={capacitySettings.business_break_end} onChange={(event) => updateCapacitySetting('business_break_end', event.target.value)} /></label>
             </div>
           </article>
           <article className="settings-card">

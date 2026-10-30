@@ -52,6 +52,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
     if (!term) return orders
     return orders.filter((order) => [
       orderCode(order.order_sequence),
+      order.workshop_order_number,
       order.product_name,
       order.client?.first_name,
       order.client?.last_name,
@@ -122,6 +123,16 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
       return
     }
     setLoading(true)
+    const workshopOrderNumber = String(form.get('workshop_order_number') ?? '').trim() || null
+    const { error: workshopOrderError } = await supabase.from('orders').update({
+      workshop_order_number: workshopOrderNumber,
+      updated_by: profile.id,
+    }).eq('id', selected.id)
+    if (workshopOrderError) {
+      setLoading(false)
+      setError(workshopOrderError.message)
+      return
+    }
     const { error: updateError } = await supabase.rpc('update_order_operations', {
       p_order_id: selected.id,
       p_status: String(form.get('status')),
@@ -256,11 +267,11 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
 
       <div className="split-workspace">
         <div className="panel order-list-panel">
-          <label>Buscar ventas<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, código, producto o estado" /></label>
+          <label>Buscar ventas<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cliente, pedido, OC taller, producto o estado" /></label>
           <div className="order-list">
             {filtered.map((order) => (
               <button type="button" key={order.id} className={selectedId === order.id ? 'order-list-item active' : 'order-list-item'} onClick={() => setSelectedId(order.id)}>
-                <span><strong>{orderCode(order.order_sequence)}</strong><small>{order.client?.first_name} {order.client?.last_name}</small></span>
+                <span><strong>{orderCode(order.order_sequence)}</strong><small>{order.workshop_order_number ? `OC taller: ${order.workshop_order_number}` : 'OC taller pendiente'}</small><small>{order.client?.first_name} {order.client?.last_name}</small></span>
                 <span><strong>{order.product_name}</strong><small>{orderStatusLabels[order.status]}</small></span>
               </button>
             ))}
@@ -273,7 +284,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
           {selected && (
             <>
               <div className="panel">
-                <div className="detail-heading"><div><h2>{orderCode(selected.order_sequence)} · {selected.product_name}</h2><p>{selected.client?.first_name} {selected.client?.last_name} · {selected.product_type?.name ?? 'Sin tipo'} · {productionRouteLabels[selected.production_route]}</p><small>Vendedora: {selected.seller?.full_name ?? 'Sin asignar'}</small></div><span className="badge badge-info">{orderStatusLabels[selected.status]}</span></div>
+                <div className="detail-heading"><div><h2>{orderCode(selected.order_sequence)} · {selected.product_name}</h2><p>{selected.client?.first_name} {selected.client?.last_name} · {selected.product_type?.name ?? 'Sin tipo'} · {productionRouteLabels[selected.production_route]}</p><small>OC taller: {selected.workshop_order_number ?? 'sin registrar'} · Vendedora: {selected.seller?.full_name ?? 'Sin asignar'}</small></div><span className="badge badge-info">{orderStatusLabels[selected.status]}</span></div>
                 <div className="metric-grid four-metrics">
                   <Metric label="Venta final" value={commercialAccess ? formatClp(finalSale) : 'Restringido'} />
                   <Metric label="Pagado" value={commercialAccess ? formatClp(paid) : 'Restringido'} />
@@ -285,6 +296,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
               <form className="panel form-stack" onSubmit={saveOperations}>
                 <h3>Planificación y avance</h3>
                 <div className="form-grid three-columns">
+                  <label>OC de taller<input name="workshop_order_number" maxLength={100} defaultValue={selected.workshop_order_number ?? ''} placeholder="Ej.: OT-2026-015" /></label>
                   <label>Estado<select name="status" defaultValue={selected.status}>{orderStatuses.map((status) => <option key={status} value={status}>{orderStatusLabels[status]}</option>)}</select></label>
                   <label>Semana planificada<input name="planned_week_start" type="date" defaultValue={selected.planned_week_start ?? ''} /></label>
                   <label>Inicio producción<input name="production_start_date" type="date" defaultValue={selected.production_start_date ?? ''} /></label>

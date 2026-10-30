@@ -178,6 +178,7 @@ export interface OrderPayment {
 export interface Order {
   id: string
   order_sequence: number
+  workshop_order_number: string | null
   client_id: string
   source_appointment_id: string | null
   seller_id: string | null

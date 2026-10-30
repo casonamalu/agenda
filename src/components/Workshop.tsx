@@ -78,6 +78,15 @@ export function Workshop({ profile, refreshToken, onChanged }: Props) {
       setError(`Indica el motivo de la desviación en ${orderCode(order.order_sequence)}.`)
       return
     }
+    const workshopOrderNumber = String(form.get('workshop_order_number') ?? '').trim() || null
+    const { error: workshopOrderError } = await supabase.from('orders').update({
+      workshop_order_number: workshopOrderNumber,
+      updated_by: profile.id,
+    }).eq('id', order.id)
+    if (workshopOrderError) {
+      setError(workshopOrderError.message)
+      return
+    }
     const { error: updateError } = await supabase.rpc('update_order_operations', {
       p_order_id: order.id,
       p_status: String(form.get('status')),
@@ -141,7 +150,8 @@ export function Workshop({ profile, refreshToken, onChanged }: Props) {
         <div className="workshop-order-list">
           {filteredOrders.map((order) => (
             <form className="workshop-order-card" key={order.id} onSubmit={(event) => void updateOrder(event, order)}>
-              <div><strong>{orderCode(order.order_sequence)} · {order.product_name}</strong><small>{order.client?.first_name} {order.client?.last_name} · {productionRouteLabels[order.production_route]}</small><small>Entrega: {order.promised_delivery_date ? formatDate(order.promised_delivery_date) : 'sin fecha'}</small></div>
+              <div><strong>{orderCode(order.order_sequence)} · {order.product_name}</strong><small>{order.client?.first_name} {order.client?.last_name} · {productionRouteLabels[order.production_route]}</small><small>OC taller: {order.workshop_order_number ?? 'sin registrar'} · Entrega: {order.promised_delivery_date ? formatDate(order.promised_delivery_date) : 'sin fecha'}</small></div>
+              <label>OC de taller<input name="workshop_order_number" maxLength={100} defaultValue={order.workshop_order_number ?? ''} placeholder="OT-2026-015" /></label>
               <label>Estado<select name="status" defaultValue={order.status}>{orderStatuses.map((status) => <option key={status} value={status}>{orderStatusLabels[status]}</option>)}</select></label>
               <label>Semana<input name="planned_week_start" type="date" defaultValue={order.planned_week_start ?? ''} /></label>
               <label>Horas plan.<input name="planned_hours" type="number" min="0" step="0.25" defaultValue={order.planned_hours ?? ''} /></label>

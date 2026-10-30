@@ -341,7 +341,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 .capacity-week.warning .progress-track > div { background: var(--warning); }
 .capacity-week.overloaded .progress-track > div { background: var(--danger); }
 .workshop-order-list { display: grid; gap: 9px; }
-.workshop-order-card { display: grid; grid-template-columns: minmax(210px, 1.5fr) 170px 145px 95px 95px minmax(150px, 1fr) auto; gap: 9px; align-items: end; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.workshop-order-card { display: grid; grid-template-columns: minmax(210px, 1.5fr) 145px 170px 145px 95px 95px minmax(150px, 1fr) auto; gap: 9px; align-items: end; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
 .workshop-order-card > div { display: grid; gap: 4px; align-self: center; }
 .workshop-order-card label { font-size: 11px; }
 .workshop-order-card input, .workshop-order-card select { padding: 8px; font-size: 12px; }

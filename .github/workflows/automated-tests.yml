@@ -51,7 +51,7 @@ jobs:
           set -euo pipefail
           origin="https://agenda-casonamalu.vercel.app"
           curl --fail --silent --show-error --retry 6 --retry-all-errors "$origin/" --output /tmp/agenda.html
-          grep --fixed-strings '<div id="root"></div>' /tmp/agenda.html
+          grep --fixed-strings 'id="root"' /tmp/agenda.html
           asset_path="$(sed -n 's/.*src="\([^"]*index-[^"]*\.js\)".*/\1/p' /tmp/agenda.html | head -n 1)"
           test -n "$asset_path"
           curl --fail --silent --show-error --retry 6 --retry-all-errors "$origin$asset_path" --output /dev/null

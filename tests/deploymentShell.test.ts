@@ -18,3 +18,12 @@ test('the deployed HTML is never reused with an obsolete asset hash', () => {
 
   assert.equal(cacheHeader?.value, 'no-cache, no-store, must-revalidate')
 })
+
+
+test('the production smoke test accepts the visible startup shell', () => {
+  const workflow = readFileSync(new URL('../.github/workflows/automated-tests.yml', import.meta.url), 'utf8')
+
+  assert.match(workflow, /grep --fixed-strings 'id="root"'/)
+  assert.doesNotMatch(workflow, /grep --fixed-strings '<div id="root"><\/div>'/)
+  assert.match(workflow, /curl --fail .*"\$origin\$asset_path"/)
+})

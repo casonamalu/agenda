@@ -97,6 +97,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [commercialOutcome, setCommercialOutcome] = useState<CommercialOutcome | ''>('')
   const [commercialDecisionDate, setCommercialDecisionDate] = useState(chileIsoDate)
   const [commercialNotes, setCommercialNotes] = useState('')
+  const [salesGuideNumber, setSalesGuideNumber] = useState('')
   const [commercialHistory, setCommercialHistory] = useState<CommercialDecision[]>([])
   const [companionOutcome, setCompanionOutcome] = useState<CommercialOutcome | ''>('')
   const [companionDecisionDate, setCompanionDecisionDate] = useState(chileIsoDate)
@@ -138,6 +139,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setCommercialOutcome(appointment?.commercial_outcome ?? '')
     setCommercialDecisionDate(appointment?.commercial_outcome_at ? chileIsoDate(appointment.commercial_outcome_at) : chileIsoDate())
     setCommercialNotes('')
+    setSalesGuideNumber(appointment?.sales_guide_number ?? '')
     setCommercialHistory([])
     setSelectedClient(appointment?.client ?? null)
     setNewClient(emptyClient)
@@ -502,6 +504,24 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     }
   }
 
+  async function saveSalesGuideNumber() {
+    if (!appointment) return
+    const guideNumber = salesGuideNumber.trim()
+    if (guideNumber.length > 100) {
+      setError('El número de guía no puede superar los 100 caracteres.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    const { error: guideError } = await supabase
+      .from('appointments')
+      .update({ sales_guide_number: guideNumber || null, updated_by: profile.id })
+      .eq('id', appointment.id)
+    setLoading(false)
+    if (guideError) setError(guideError.message)
+    else onSaved(guideNumber ? `La guía ${guideNumber} quedó registrada.` : 'Se eliminó el número de guía.')
+  }
+
   async function saveCompanionOutcome() {
     if (!appointment || !companion) return
     if (companionOutcome && !companionDecisionDate) {
@@ -800,6 +820,21 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
               <legend>Decisión de la venta</legend>
               {appointment.participants?.length ? <h3>{appointment.client?.first_name} {appointment.client?.last_name} · persona principal</h3> : null}
               <p className="form-help">Puede registrarse al terminar la cita o actualizarse días después. Cada cambio conserva su fecha efectiva y trazabilidad.</p>
+              <div className="form-grid two-columns">
+                <label>
+                  Número de guía
+                  <input
+                    value={salesGuideNumber}
+                    maxLength={100}
+                    onChange={(event) => setSalesGuideNumber(event.target.value)}
+                    placeholder="Ej.: 3104"
+                  />
+                </label>
+                <div className="action-row align-end">
+                  <button type="button" className="btn btn-secondary" disabled={loading} onClick={() => void saveSalesGuideNumber()}>Guardar guía</button>
+                </div>
+              </div>
+              <p className="form-help">Al registrar la venta, esta guía se traspasa automáticamente a la OC del taller si todavía está vacía.</p>
               <div className="form-grid two-columns">
                 <label>
                   Estado comercial

@@ -114,6 +114,8 @@ small { color: var(--muted); }
 .appointment-card-client strong { color: var(--text); }
 .appointment-guide-number { color: var(--primary) !important; font-size: 12px !important; font-weight: 750; }
 .workshop-guide-value { margin: 0; color: var(--text); }
+.workshop-guide-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.workshop-guide-editor label { margin: 0; }
 .appointment-card em { color: var(--danger); font-style: normal; font-size: 11px; font-weight: 800; }
 .appointment-card .group-label { color: var(--primary); background: #f6e9ed; border-radius: 999px; padding: 4px 8px; white-space: nowrap; }
 .appointment-time { color: var(--text) !important; font-weight: 800; }
@@ -410,6 +412,7 @@ details pre { max-width: 500px; max-height: 300px; overflow: auto; background: #
 }
 
 @media (max-width: 760px) {
+  .workshop-guide-editor { grid-template-columns: 1fr; }
   .app-shell { display: block; }
   .sidebar { height: auto; position: fixed; inset: auto 0 0 0; z-index: 80; padding: 7px; flex-direction: row; overflow-x: auto; }
   .sidebar-brand, .sidebar-user { display: none; }

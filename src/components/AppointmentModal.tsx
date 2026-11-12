@@ -99,6 +99,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [commercialNotes, setCommercialNotes] = useState('')
   const [commercialHistory, setCommercialHistory] = useState<CommercialDecision[]>([])
   const [salesGuideNumber, setSalesGuideNumber] = useState<string | null>(appointment?.sales_guide_number ?? null)
+  const [salesGuideNumberInput, setSalesGuideNumberInput] = useState(appointment?.sales_guide_number ?? '')
   const [companionOutcome, setCompanionOutcome] = useState<CommercialOutcome | ''>('')
   const [companionDecisionDate, setCompanionDecisionDate] = useState(chileIsoDate)
   const [companionNotes, setCompanionNotes] = useState('')
@@ -108,6 +109,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [draftReady, setDraftReady] = useState(false)
 
   const isEdit = Boolean(appointment)
+  const canEditSalesGuide = profile.role === 'admin' || profile.role === 'seller'
   const selectedType = useMemo(
     () => types.find((type) => type.id === appointmentTypeId) ?? null,
     [appointmentTypeId, types],
@@ -197,6 +199,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     }
     let active = true
     setSalesGuideNumber(appointment.sales_guide_number ?? null)
+    setSalesGuideNumberInput(appointment.sales_guide_number ?? '')
     void supabase
       .from('appointments')
       .select('sales_guide_number')
@@ -204,7 +207,9 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       .maybeSingle()
       .then(({ data, error: guideError }) => {
         if (!active || guideError) return
-        setSalesGuideNumber(data?.sales_guide_number ?? appointment.sales_guide_number ?? null)
+        const guideNumber = data?.sales_guide_number ?? appointment.sales_guide_number ?? null
+        setSalesGuideNumber(guideNumber)
+        setSalesGuideNumberInput(guideNumber ?? '')
       })
     return () => { active = false }
   }, [appointment?.id, open])
@@ -522,6 +527,52 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     }
   }
 
+  async function saveWorkshopGuide() {
+    if (!appointment || !canEditSalesGuide) return
+    const nextGuideNumber = salesGuideNumberInput.trim() || null
+    setLoading(true)
+    setError('')
+
+    if (nextGuideNumber) {
+      const { data: duplicate, error: duplicateError } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('sales_guide_number', nextGuideNumber)
+        .neq('id', appointment.id)
+        .limit(1)
+        .maybeSingle()
+      if (duplicateError) {
+        setLoading(false)
+        setError(duplicateError.message)
+        return
+      }
+      if (duplicate) {
+        setLoading(false)
+        setError(`La guía ${nextGuideNumber} ya está asociada a otra cita.`)
+        return
+      }
+    }
+
+    const { data, error: guideSaveError } = await supabase
+      .from('appointments')
+      .update({ sales_guide_number: nextGuideNumber })
+      .eq('id', appointment.id)
+      .select('sales_guide_number')
+      .maybeSingle()
+    setLoading(false)
+    if (guideSaveError) {
+      setError(guideSaveError.message)
+      return
+    }
+    if (!data) {
+      setError('La guía no se guardó. Revisa que tengas permisos para modificar citas.')
+      return
+    }
+    setSalesGuideNumber(data.sales_guide_number ?? null)
+    setSalesGuideNumberInput(data.sales_guide_number ?? '')
+    onSaved(nextGuideNumber ? `La guía ${nextGuideNumber} quedó asociada a la cita.` : 'Se quitó la guía de la cita.')
+  }
+
   async function saveCompanionOutcome() {
     if (!appointment || !companion) return
     if (companionOutcome && !companionDecisionDate) {
@@ -787,6 +838,21 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                   ))}
                 </select>
               </label>
+              {appointment && canEditSalesGuide && (
+                <div className="span-two workshop-guide-editor">
+                  <label>
+                    Guía de taller
+                    <input
+                      value={salesGuideNumberInput}
+                      onChange={(event) => setSalesGuideNumberInput(event.target.value)}
+                      placeholder="Escribe el número de guía"
+                    />
+                  </label>
+                  <button type="button" className="btn btn-secondary" onClick={() => void saveWorkshopGuide()} disabled={loading}>
+                    Guardar guía
+                  </button>
+                </div>
+              )}
               {allowOutOfSlot && (
                 <label>
                   Hora excepcional

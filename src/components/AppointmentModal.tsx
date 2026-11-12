@@ -69,6 +69,49 @@ function timeToMinutes(value: string) {
   return hours * 60 + minutes
 }
 
+async function checkGuideNumberInUse(guideNumber: string, excludeAppointmentId?: string) {
+  let query = supabase.from('appointments').select('id').eq('sales_guide_number', guideNumber)
+  if (excludeAppointmentId) query = query.neq('id', excludeAppointmentId)
+  const { data, error: duplicateError } = await query.limit(1).maybeSingle()
+  if (duplicateError) return duplicateError.message
+  return data ? `La guía ${guideNumber} ya está registrada en otra venta.` : null
+}
+
+async function saveGuideOnSaleAppointment(appointmentId: string, guideNumber: string) {
+  const duplicateError = await checkGuideNumberInUse(guideNumber, appointmentId)
+  if (duplicateError) return { error: duplicateError, guideNumber: null }
+  const { data, error: updateError } = await supabase
+    .from('appointments')
+    .update({ sales_guide_number: guideNumber })
+    .eq('id', appointmentId)
+    .select('sales_guide_number')
+    .maybeSingle()
+  if (updateError) return { error: updateError.message, guideNumber: null }
+  if (!data) return { error: 'No se pudo guardar la guía en la cita de venta.', guideNumber: null }
+  return { error: null, guideNumber: data.sales_guide_number ?? null }
+}
+
+function appointmentMoment(appointment: { appointment_date: string; start_time: string }) {
+  return `${appointment.appointment_date}T${appointment.start_time.slice(0, 5)}`
+}
+
+async function findPriorSalesGuide(clientId: string, targetDate: string, targetTime: string) {
+  const { data, error: guideError } = await supabase
+    .from('appointments')
+    .select('appointment_date,start_time,sales_guide_number,appointment_type:appointment_types!inner(category)')
+    .eq('client_id', clientId)
+    .eq('appointment_type.category', 'sale')
+    .lte('appointment_date', targetDate)
+    .order('appointment_date', { ascending: false })
+    .order('start_time', { ascending: false })
+    .limit(100)
+  if (guideError) return { guideNumber: null, error: guideError.message }
+  const rows = (data ?? []) as unknown as Array<{ appointment_date: string; start_time: string; sales_guide_number: string | null }>
+  const targetMoment = `${targetDate}T${targetTime.slice(0, 5)}`
+  const previousSale = rows.find((row) => appointmentMoment(row) <= targetMoment)
+  return { guideNumber: previousSale?.sales_guide_number ?? null, error: null }
+}
+
 export function AppointmentModal({ open, profile, appointment, initialDate, onClose, onSaved, onCreateOrder }: Props) {
   const [types, setTypes] = useState<AppointmentType[]>([])
   const [clientTypes, setClientTypes] = useState<ClientType[]>([])
@@ -100,6 +143,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [commercialHistory, setCommercialHistory] = useState<CommercialDecision[]>([])
   const [salesGuideNumber, setSalesGuideNumber] = useState<string | null>(appointment?.sales_guide_number ?? null)
   const [salesGuideNumberInput, setSalesGuideNumberInput] = useState(appointment?.sales_guide_number ?? '')
+  const [salesGuideInputDirty, setSalesGuideInputDirty] = useState(false)
   const [companionOutcome, setCompanionOutcome] = useState<CommercialOutcome | ''>('')
   const [companionDecisionDate, setCompanionDecisionDate] = useState(chileIsoDate)
   const [companionNotes, setCompanionNotes] = useState('')
@@ -142,6 +186,8 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setCommercialDecisionDate(appointment?.commercial_outcome_at ? chileIsoDate(appointment.commercial_outcome_at) : chileIsoDate())
     setCommercialNotes('')
     setCommercialHistory([])
+    setSalesGuideInputDirty(false)
+    setSalesGuideNumberInput(appointment?.sales_guide_number ?? '')
     setSelectedClient(appointment?.client ?? null)
     setNewClient(emptyClient)
     setHasCompanion(Boolean(appointment?.participants?.length))
@@ -213,6 +259,24 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       })
     return () => { active = false }
   }, [appointment?.id, open])
+
+  useEffect(() => {
+    if (!open || appointment || !canEditSalesGuide || !selectedType || selectedType.category === 'sale') {
+      if (open && !appointment && !salesGuideInputDirty && selectedType?.category === 'sale') setSalesGuideNumberInput('')
+      return
+    }
+    if (!selectedClient || !date) {
+      if (!salesGuideInputDirty) setSalesGuideNumberInput('')
+      return
+    }
+    let active = true
+    const targetTime = startTime || '00:00'
+    void findPriorSalesGuide(selectedClient.id, date, targetTime).then(({ guideNumber }) => {
+      if (!active || salesGuideInputDirty) return
+      setSalesGuideNumberInput(guideNumber ?? '')
+    })
+    return () => { active = false }
+  }, [open, appointment?.id, canEditSalesGuide, selectedType?.category, selectedClient?.id, date, startTime, salesGuideInputDirty])
 
   useEffect(() => {
     if (!open || !appointmentTypeId || !date) return
@@ -317,11 +381,15 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     setSelectedClient(client)
     setClientQuery(`${client.first_name} ${client.last_name}`)
     setClients([])
+    setSalesGuideInputDirty(false)
+    setSalesGuideNumberInput('')
   }
 
   function clearClient() {
     setSelectedClient(null)
     setClientQuery('')
+    setSalesGuideInputDirty(false)
+    setSalesGuideNumberInput('')
   }
 
   function chooseCompanion(client: Client) {
@@ -432,6 +500,14 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
         return
       }
     }
+    const guideNumberToSave = canEditSalesGuide && selectedType?.category === 'sale' ? salesGuideNumberInput.trim() : ''
+    if (!isEdit && guideNumberToSave) {
+      const guideConflict = await checkGuideNumberInUse(guideNumberToSave)
+      if (guideConflict) {
+        setError(guideConflict)
+        return
+      }
+    }
     const storedExceptionReason = exceptionReason.trim()
       || ((allowOutOfSlot || allowOverbook) ? DEFAULT_EXCEPTION_REASON : null)
 
@@ -452,7 +528,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       if (updateError) setError(updateError.message)
       else onSaved('La cita fue actualizada y se programó el correo correspondiente.')
     } else if (hasCompanion) {
-      const { error: createError } = await supabase.rpc('create_group_sale_appointment_v2', {
+      const { data: appointmentId, error: createError } = await supabase.rpc('create_group_sale_appointment_v2', {
         p_primary_client: clientPayload(selectedClient, newClient),
         p_companion_client: clientPayload(selectedCompanion, newCompanion),
         p_appointment_type_id: appointmentTypeId,
@@ -467,10 +543,17 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       if (createError) setError(createError.message)
       else {
         clearAppointmentDraft()
-        onSaved('Cita para dos personas creada por 90 minutos. Ambas confirmaciones quedaron en cola.')
+        if (guideNumberToSave && appointmentId) {
+          const result = await saveGuideOnSaleAppointment(appointmentId, guideNumberToSave)
+          onSaved(result.error
+            ? `La venta se creó, pero no se pudo guardar la guía: ${result.error}`
+            : `La venta se creó y quedó asociada a la guía ${guideNumberToSave}. Las pruebas y la entrega de esta clienta la mostrarán automáticamente.`)
+        } else {
+          onSaved('Cita para dos personas creada por 90 minutos. Ambas confirmaciones quedaron en cola.')
+        }
       }
     } else {
-      const { error: createError } = await supabase.rpc('create_appointment_v3', {
+      const { data: appointmentId, error: createError } = await supabase.rpc('create_appointment_v3', {
         p_existing_client_id: selectedClient?.id ?? null,
         p_first_name: selectedClient ? null : newClient.first_name.trim(),
         p_last_name: selectedClient ? null : newClient.last_name.trim(),
@@ -493,7 +576,14 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
       if (createError) setError(createError.message)
       else {
         clearAppointmentDraft()
-        onSaved('La cita fue creada y el correo informativo quedó en cola.')
+        if (guideNumberToSave && appointmentId) {
+          const result = await saveGuideOnSaleAppointment(appointmentId, guideNumberToSave)
+          onSaved(result.error
+            ? `La venta se creó, pero no se pudo guardar la guía: ${result.error}`
+            : `La venta se creó y quedó asociada a la guía ${guideNumberToSave}. Las pruebas y la entrega de esta clienta la mostrarán automáticamente.`)
+        } else {
+          onSaved('La cita fue creada y el correo informativo quedó en cola.')
+        }
       }
     }
     setLoading(false)
@@ -529,48 +619,26 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
 
   async function saveWorkshopGuide() {
     if (!appointment || !canEditSalesGuide) return
-    const nextGuideNumber = salesGuideNumberInput.trim() || null
+    if (selectedType?.category !== 'sale') {
+      setError('La guía se registra en la cita de venta. Las citas posteriores la mostrarán automáticamente.')
+      return
+    }
+    const nextGuideNumber = salesGuideNumberInput.trim()
+    if (!nextGuideNumber) {
+      setError('Escribe el número de guía antes de guardar.')
+      return
+    }
     setLoading(true)
     setError('')
-
-    if (nextGuideNumber) {
-      const { data: duplicate, error: duplicateError } = await supabase
-        .from('appointments')
-        .select('id')
-        .eq('sales_guide_number', nextGuideNumber)
-        .neq('id', appointment.id)
-        .limit(1)
-        .maybeSingle()
-      if (duplicateError) {
-        setLoading(false)
-        setError(duplicateError.message)
-        return
-      }
-      if (duplicate) {
-        setLoading(false)
-        setError(`La guía ${nextGuideNumber} ya está asociada a otra cita.`)
-        return
-      }
-    }
-
-    const { data, error: guideSaveError } = await supabase
-      .from('appointments')
-      .update({ sales_guide_number: nextGuideNumber })
-      .eq('id', appointment.id)
-      .select('sales_guide_number')
-      .maybeSingle()
+    const result = await saveGuideOnSaleAppointment(appointment.id, nextGuideNumber)
     setLoading(false)
-    if (guideSaveError) {
-      setError(guideSaveError.message)
+    if (result.error) {
+      setError(result.error)
       return
     }
-    if (!data) {
-      setError('La guía no se guardó. Revisa que tengas permisos para modificar citas.')
-      return
-    }
-    setSalesGuideNumber(data.sales_guide_number ?? null)
-    setSalesGuideNumberInput(data.sales_guide_number ?? '')
-    onSaved(nextGuideNumber ? `La guía ${nextGuideNumber} quedó asociada a la cita.` : 'Se quitó la guía de la cita.')
+    setSalesGuideNumber(result.guideNumber)
+    setSalesGuideNumberInput(result.guideNumber ?? '')
+    onSaved(`La guía ${nextGuideNumber} quedó asociada a esta venta. Las pruebas y la entrega de esta clienta la mostrarán automáticamente.`)
   }
 
   async function saveCompanionOutcome() {
@@ -838,19 +906,32 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                   ))}
                 </select>
               </label>
-              {appointment && canEditSalesGuide && (
+              {canEditSalesGuide && selectedType?.category === 'sale' && (
                 <div className="span-two workshop-guide-editor">
                   <label>
                     Guía de taller
                     <input
                       value={salesGuideNumberInput}
-                      onChange={(event) => setSalesGuideNumberInput(event.target.value)}
+                      onChange={(event) => {
+                        setSalesGuideNumberInput(event.target.value)
+                        setSalesGuideInputDirty(true)
+                      }}
                       placeholder="Escribe el número de guía"
                     />
                   </label>
-                  <button type="button" className="btn btn-secondary" onClick={() => void saveWorkshopGuide()} disabled={loading}>
-                    Guardar guía
-                  </button>
+                  {appointment ? (
+                    <button type="button" className="btn btn-secondary" onClick={() => void saveWorkshopGuide()} disabled={loading}>
+                      Guardar guía
+                    </button>
+                  ) : (
+                    <small>Se registrará con esta venta y aparecerá en las pruebas y la entrega de esta clienta.</small>
+                  )}
+                </div>
+              )}
+              {canEditSalesGuide && selectedType && selectedType.category !== 'sale' && (
+                <div className="span-two workshop-guide-inherited">
+                  <span>Guía de taller de la venta anterior</span>
+                  <strong>{salesGuideNumberInput || 'No hay una guía asociada a una venta anterior de esta clienta.'}</strong>
                 </div>
               )}
               {allowOutOfSlot && (

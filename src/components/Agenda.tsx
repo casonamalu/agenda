@@ -28,6 +28,59 @@ function appointmentClass(appointment: Appointment) {
   return `appointment-card status-${appointment.status}${appointment.is_overbook ? ' overbook' : ''}`
 }
 
+interface SalesGuideSource {
+  client_id: string
+  appointment_date: string
+  start_time: string
+  sales_guide_number: string | null
+}
+
+function appointmentMoment(appointment: { appointment_date: string; start_time: string }) {
+  return `${appointment.appointment_date}T${appointment.start_time.slice(0, 5)}`
+}
+
+async function includePreviousSaleGuides(appointments: Appointment[]) {
+  const clientIds = [...new Set(appointments.map((appointment) => appointment.client_id))]
+  if (!clientIds.length) return { appointments, error: null as string | null }
+  const sales: SalesGuideSource[] = []
+  const chunkSize = 100
+  const pageSize = 1000
+
+  for (let chunkStart = 0; chunkStart < clientIds.length; chunkStart += chunkSize) {
+    const clientChunk = clientIds.slice(chunkStart, chunkStart + chunkSize)
+    let page = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('client_id,appointment_date,start_time,sales_guide_number,appointment_type:appointment_types!inner(category)')
+        .in('client_id', clientChunk)
+        .eq('appointment_type.category', 'sale')
+        .order('appointment_date', { ascending: false })
+        .order('start_time', { ascending: false })
+        .range(page * pageSize, page * pageSize + pageSize - 1)
+      if (error) return { appointments, error: error.message }
+      sales.push(...((data ?? []) as unknown as SalesGuideSource[]))
+      if ((data?.length ?? 0) < pageSize) break
+      page += 1
+    }
+  }
+
+  const salesByClient = new Map<string, SalesGuideSource[]>()
+  for (const sale of sales) {
+    const clientSales = salesByClient.get(sale.client_id) ?? []
+    clientSales.push(sale)
+    salesByClient.set(sale.client_id, clientSales)
+  }
+  const enrichedAppointments = appointments.map((appointment) => {
+    if (appointment.appointment_type?.category === 'sale') return appointment
+    const targetMoment = appointmentMoment(appointment)
+    const previousSale = (salesByClient.get(appointment.client_id) ?? [])
+      .find((sale) => appointmentMoment(sale) <= targetMoment)
+    return { ...appointment, sales_guide_number: previousSale?.sales_guide_number ?? null }
+  })
+  return { appointments: enrichedAppointments, error: null as string | null }
+}
+
 export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointment }: Props) {
   const [view, setView] = useState<CalendarView>(() => {
     const saved = window.localStorage.getItem('casona-malu-agenda-view')
@@ -90,7 +143,10 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       supabase.from('appointment_types').select('*').eq('active', true).order('sort_order'),
     ])
     if (appointmentsResult.error) setError(appointmentsResult.error.message)
-    setAppointments((appointmentsResult.data ?? []) as Appointment[])
+    const rows = (appointmentsResult.data ?? []) as Appointment[]
+    const guideResolution = await includePreviousSaleGuides(rows)
+    if (guideResolution.error) setError(guideResolution.error)
+    setAppointments(guideResolution.appointments)
     setTypes((typesResult.data ?? []) as AppointmentType[])
     setLoading(false)
   }
@@ -121,8 +177,10 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       setError(searchError.message)
       setGlobalResults([])
     } else {
+      const guideResolution = await includePreviousSaleGuides(allAppointments)
+      if (guideResolution.error) setError(guideResolution.error)
       const compactDate = query.trim().replace(/\//g, '-')
-      setGlobalResults(allAppointments.filter((appointment) => {
+      setGlobalResults(guideResolution.appointments.filter((appointment) => {
         const clients = appointmentClients(appointment)
         const values = [
           ...clients.flatMap((client) => [client.first_name, client.last_name, client.email, client.phone, client.instagram]),

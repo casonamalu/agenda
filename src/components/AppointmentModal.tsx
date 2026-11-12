@@ -98,6 +98,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
   const [commercialDecisionDate, setCommercialDecisionDate] = useState(chileIsoDate)
   const [commercialNotes, setCommercialNotes] = useState('')
   const [commercialHistory, setCommercialHistory] = useState<CommercialDecision[]>([])
+  const [salesGuideNumber, setSalesGuideNumber] = useState<string | null>(appointment?.sales_guide_number ?? null)
   const [companionOutcome, setCompanionOutcome] = useState<CommercialOutcome | ''>('')
   const [companionDecisionDate, setCompanionDecisionDate] = useState(chileIsoDate)
   const [companionNotes, setCompanionNotes] = useState('')
@@ -187,6 +188,25 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
     if (!open || !appointment) return
     void loadCommercialHistory(appointment.id)
     if (appointment.participants?.[0]) void loadCompanionHistory(appointment.participants[0].id)
+  }, [appointment?.id, open])
+
+  useEffect(() => {
+    if (!open || !appointment) {
+      setSalesGuideNumber(null)
+      return
+    }
+    let active = true
+    setSalesGuideNumber(appointment.sales_guide_number ?? null)
+    void supabase
+      .from('appointments')
+      .select('sales_guide_number')
+      .eq('id', appointment.id)
+      .maybeSingle()
+      .then(({ data, error: guideError }) => {
+        if (!active || guideError) return
+        setSalesGuideNumber(data?.sales_guide_number ?? appointment.sales_guide_number ?? null)
+      })
+    return () => { active = false }
   }, [appointment?.id, open])
 
   useEffect(() => {
@@ -568,6 +588,9 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
                 {formatTime(appointment.start_time)}
               </p>
             )}
+            {appointment && salesGuideNumber && (
+              <p className="workshop-guide-value"><strong>Guía de taller:</strong> {salesGuideNumber}</p>
+            )}
           </div>
           <button className="icon-button" type="button" onClick={requestClose} aria-label="Cerrar">
             ×
@@ -794,13 +817,6 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
               </div>
             )}
           </fieldset>
-
-          {appointment?.sales_guide_number && (
-            <fieldset className="form-section">
-              <legend>Guía de taller</legend>
-              <p className="workshop-guide-value"><strong>Número de guía:</strong> {appointment.sales_guide_number}</p>
-            </fieldset>
-          )}
 
           {appointment && selectedType?.category === 'sale' && appointment.status !== 'cancelled' && appointment.status !== 'no_show' && (
             <fieldset className="form-section">

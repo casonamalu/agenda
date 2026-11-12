@@ -116,6 +116,10 @@ small { color: var(--muted); }
 .workshop-guide-value { margin: 0; color: var(--text); }
 .workshop-guide-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
 .workshop-guide-editor label { margin: 0; }
+.workshop-guide-editor small { grid-column: 1 / -1; }
+.workshop-guide-inherited { display: grid; gap: 4px; padding: 12px; border-radius: 10px; background: #f7edf0; color: var(--primary); }
+.workshop-guide-inherited span { font-size: 12px; font-weight: 750; }
+.workshop-guide-inherited strong { color: var(--text); }
 .appointment-card em { color: var(--danger); font-style: normal; font-size: 11px; font-weight: 800; }
 .appointment-card .group-label { color: var(--primary); background: #f6e9ed; border-radius: 999px; padding: 4px 8px; white-space: nowrap; }
 .appointment-time { color: var(--text) !important; font-weight: 800; }

@@ -94,6 +94,7 @@ export interface Appointment {
   commercial_outcome: CommercialOutcome | null
   commercial_outcome_at: string | null
   commercial_outcome_by: string | null
+  sales_guide_number?: string | null
   order_id: string | null
   created_by: string
   updated_by: string

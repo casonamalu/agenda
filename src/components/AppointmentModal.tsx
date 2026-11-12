@@ -795,6 +795,13 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
             )}
           </fieldset>
 
+          {appointment?.sales_guide_number && (
+            <fieldset className="form-section">
+              <legend>Guía de taller</legend>
+              <p className="workshop-guide-value"><strong>Número de guía:</strong> {appointment.sales_guide_number}</p>
+            </fieldset>
+          )}
+
           {appointment && selectedType?.category === 'sale' && appointment.status !== 'cancelled' && appointment.status !== 'no_show' && (
             <fieldset className="form-section">
               <legend>Decisión de la venta</legend>

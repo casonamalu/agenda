@@ -127,6 +127,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
         const values = [
           ...clients.flatMap((client) => [client.first_name, client.last_name, client.email, client.phone, client.instagram]),
           appointment.appointment_type?.name,
+          appointment.sales_guide_number,
           appointment.appointment_date,
           formatDate(appointment.appointment_date),
         ]
@@ -199,7 +200,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       <div className="filter-grid no-print">
         <label>
           Búsqueda global
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, Instagram, correo, tipo o fecha" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Clienta, guía, Instagram, correo, tipo o fecha" />
         </label>
         <label>
           Tipo de cita
@@ -278,7 +279,10 @@ function GlobalSearchResults({ appointments, loading, onOpen }: {
           ? <div className="empty-state">No se encontraron citas con estos criterios.</div>
           : appointments.map((appointment) => (
             <button type="button" className="global-result-row" key={appointment.id} onClick={() => onOpen(appointment)}>
-              <span><strong>{appointmentClientNames(appointment)}</strong><small>{appointmentClients(appointment).map((client) => client.email).join(' · ')}</small></span>
+              <span><strong>{appointmentClientNames(appointment)}</strong>
+                {appointmentClients(appointment).some((client) => client.email) && <small>{appointmentClients(appointment).map((client) => client.email).filter(Boolean).join(' · ')}</small>}
+                {appointment.sales_guide_number && <small className="appointment-guide-number">Guía de taller: {appointment.sales_guide_number}</small>}
+              </span>
               <span><strong>{appointment.appointment_type?.name}</strong><small>{statusLabel(appointment.status)}</small></span>
               <span><strong>{formatDate(appointment.appointment_date)}</strong><small>{formatTime(appointment.start_time)}–{formatTime(appointment.end_time)}</small></span>
             </button>
@@ -298,8 +302,10 @@ function AppointmentCard({ appointment, onOpen }: { appointment: Appointment; on
       onClick={() => onOpen(appointment)}
     >
       <span className="appointment-time">{formatTime(appointment.start_time)}–{formatTime(appointment.end_time)}</span>
-      <strong>{appointmentClientNames(appointment)}</strong>
-      <span>{type?.name ?? 'Cita'} · {statusLabel(appointment.status)}</span>
+      <span className="appointment-card-client"><strong>{appointmentClientNames(appointment)}</strong>
+        {appointment.sales_guide_number && <small className="appointment-guide-number">Guía de taller: {appointment.sales_guide_number}</small>}
+      </span>
+      <span className="appointment-card-status">{type?.name ?? 'Cita'} · {statusLabel(appointment.status)}</span>
       {(appointment.participants?.length ?? 0) > 0 && <em className="group-label">2 personas</em>}
       {appointment.is_overbook && <em>Sobrecupo</em>}
     </button>

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { acceptedDecisionSummary, chileIsoDate } from '../lib/business'
+import { chileIsoDate } from '../lib/business'
 import { formatDate, toIsoDate } from '../lib/date'
-import { formatClp, productionRouteLabels } from '../lib/operations'
+import { formatClp } from '../lib/operations'
 import { supabase } from '../lib/supabase'
 import type { Appointment, AppointmentType, Client, CommercialProductType, ProductionRoute, Profile } from '../types'
 
@@ -24,7 +24,7 @@ function typeByName(types: AppointmentType[], name: string) {
 }
 
 function appointmentMoment(date: string, time: string) {
-  return date && time ? `${date}T${time}` : ''
+  return date && time ? date + 'T' + time : ''
 }
 
 export function OrderWizard({
@@ -52,14 +52,11 @@ export function OrderWizard({
   const [grossAmount, setGrossAmount] = useState('')
   const [internalNotes, setInternalNotes] = useState('')
   const [appointmentTypes, setAppointmentTypes] = useState<AppointmentType[]>([])
-  const [scheduleTrial1, setScheduleTrial1] = useState(true)
   const [trial1Date, setTrial1Date] = useState('')
   const [trial1Time, setTrial1Time] = useState('')
   const [workshopGuide, setWorkshopGuide] = useState('')
-  const [scheduleTrial2, setScheduleTrial2] = useState(true)
   const [trial2Date, setTrial2Date] = useState('')
   const [trial2Time, setTrial2Time] = useState('')
-  const [scheduleDelivery, setScheduleDelivery] = useState(true)
   const [deliveryAppointmentDate, setDeliveryAppointmentDate] = useState('')
   const [deliveryTime, setDeliveryTime] = useState('')
 
@@ -69,6 +66,7 @@ export function OrderWizard({
   )
   const sourceAppointment = saleAppointments.find((item) => item.id === sourceAppointmentId)
   const selectedClient = clients.find((item) => item.id === clientId)
+  const linkedSaleFlow = Boolean(sourceAppointmentId)
   const trial1Type = useMemo(() => typeByName(appointmentTypes, 'Prueba 1'), [appointmentTypes])
   const trial2Type = useMemo(() => typeByName(appointmentTypes, 'Prueba 2'), [appointmentTypes])
   const deliveryType = useMemo(() => typeByName(appointmentTypes, 'Entrega'), [appointmentTypes])
@@ -110,14 +108,11 @@ export function OrderWizard({
   function chooseSource(value: string) {
     setSourceAppointmentId(value)
     const source = saleAppointments.find((item) => item.id === value)
-    if (source) {
-      setClientId(source.client_id)
-      setSaleDate(source.commercial_outcome_at ? chileIsoDate(source.commercial_outcome_at) : source.appointment_date)
-      setEventDate(source.event_date ?? '')
-      setWorkshopGuide(source.sales_guide_number ?? '')
-    } else {
-      setWorkshopGuide('')
-    }
+    if (!source) return
+    setClientId(source.client_id)
+    setSaleDate(source.commercial_outcome_at ? chileIsoDate(source.commercial_outcome_at) : source.appointment_date)
+    setEventDate(source.event_date ?? '')
+    setWorkshopGuide(source.sales_guide_number ?? '')
   }
 
   async function save(event: FormEvent<HTMLFormElement>) {
@@ -125,84 +120,77 @@ export function OrderWizard({
     onError('')
 
     if (!clientId || !sellerId || !productTypeId || !productName.trim()) {
-      onError('Completa cliente, vendedora, tipo de producto y producto.')
+      onError('Completa producto y datos básicos de la venta.')
       return
     }
     if (Number(grossAmount) <= 0) {
-      onError('Ingresa un valor de venta mayor que cero.')
+      onError('Ingresa un valor final mayor que cero.')
       return
     }
-    if (scheduleTrial1 && (!trial1Type || !trial1Date || !trial1Time)) {
-      onError('Completa fecha y hora de Prueba 1.')
+    if (!trial1Type || !trial1Date || !trial1Time || !workshopGuide.trim()) {
+      onError('Completa fecha, hora y guía de Prueba 1.')
       return
     }
-    if (scheduleTrial1 && !workshopGuide.trim()) {
-      onError('Ingresa la guía de trabajo al agendar Prueba 1.')
-      return
-    }
-    if (scheduleTrial2 && (!trial2Type || !trial2Date || !trial2Time)) {
+    if (!trial2Type || !trial2Date || !trial2Time) {
       onError('Completa fecha y hora de Prueba 2.')
       return
     }
-    if (scheduleDelivery && (!deliveryType || !deliveryAppointmentDate || !deliveryTime)) {
+    if (!deliveryType || !deliveryAppointmentDate || !deliveryTime) {
       onError('Completa fecha y hora de Entrega.')
       return
     }
 
     const moments = [
-      scheduleTrial1 ? { label: 'Prueba 1', value: appointmentMoment(trial1Date, trial1Time) } : null,
-      scheduleTrial2 ? { label: 'Prueba 2', value: appointmentMoment(trial2Date, trial2Time) } : null,
-      scheduleDelivery ? { label: 'Entrega', value: appointmentMoment(deliveryAppointmentDate, deliveryTime) } : null,
-    ].filter(Boolean) as Array<{ label: string; value: string }>
-
+      { label: 'Prueba 1', value: appointmentMoment(trial1Date, trial1Time) },
+      { label: 'Prueba 2', value: appointmentMoment(trial2Date, trial2Time) },
+      { label: 'Entrega', value: appointmentMoment(deliveryAppointmentDate, deliveryTime) },
+    ]
     for (let index = 1; index < moments.length; index += 1) {
       if (moments[index].value < moments[index - 1].value) {
-        onError(`${moments[index].label} no puede quedar antes de ${moments[index - 1].label}.`)
+        onError(moments[index].label + ' no puede quedar antes de ' + moments[index - 1].label + '.')
         return
       }
     }
 
     const guide = workshopGuide.trim()
-    if (guide) {
-      let guideQuery = supabase.from('appointments').select('id').eq('sales_guide_number', guide)
-      if (sourceAppointmentId) guideQuery = guideQuery.neq('id', sourceAppointmentId)
-      const [{ data: appointmentGuide, error: appointmentGuideError }, { data: orderGuide, error: orderGuideError }] = await Promise.all([
-        guideQuery.limit(1).maybeSingle(),
-        supabase.from('orders').select('id').eq('workshop_order_number', guide).limit(1).maybeSingle(),
-      ])
-      if (appointmentGuideError || orderGuideError) {
-        onError(appointmentGuideError?.message ?? orderGuideError?.message ?? 'No fue posible validar la guía.')
-        return
-      }
-      if (appointmentGuide || orderGuide) {
-        onError(`La guía ${guide} ya está registrada en otra venta.`)
-        return
-      }
+    let guideQuery = supabase.from('appointments').select('id').eq('sales_guide_number', guide)
+    if (sourceAppointmentId) guideQuery = guideQuery.neq('id', sourceAppointmentId)
+    const [{ data: appointmentGuide, error: existingAppointmentGuideError }, { data: orderGuide, error: existingOrderGuideError }] = await Promise.all([
+      guideQuery.limit(1).maybeSingle(),
+      supabase.from('orders').select('id').eq('workshop_order_number', guide).limit(1).maybeSingle(),
+    ])
+    if (existingAppointmentGuideError || existingOrderGuideError) {
+      onError(existingAppointmentGuideError?.message ?? existingOrderGuideError?.message ?? 'No fue posible validar la guía.')
+      return
+    }
+    if (appointmentGuide || orderGuide) {
+      onError('La guía ' + guide + ' ya está registrada en otra venta.')
+      return
     }
 
     const scheduledAppointments = [
-      scheduleTrial1 && trial1Type ? {
+      {
         appointment_type_id: trial1Type.id,
         date: trial1Date,
         start_time: trial1Time,
         duration_minutes: trial1Type.duration_minutes,
         internal_notes: null,
-      } : null,
-      scheduleTrial2 && trial2Type ? {
+      },
+      {
         appointment_type_id: trial2Type.id,
         date: trial2Date,
         start_time: trial2Time,
         duration_minutes: trial2Type.duration_minutes,
         internal_notes: null,
-      } : null,
-      scheduleDelivery && deliveryType ? {
+      },
+      {
         appointment_type_id: deliveryType.id,
         date: deliveryAppointmentDate,
         start_time: deliveryTime,
         duration_minutes: deliveryType.duration_minutes,
         internal_notes: null,
-      } : null,
-    ].filter(Boolean)
+      },
+    ]
 
     setSaving(true)
     const { data, error } = await supabase.rpc('create_order_v2', {
@@ -231,207 +219,177 @@ export function OrderWizard({
 
     const orderId = data as string
     let warning = ''
-    if (guide && orderId) {
-      const { error: orderGuideError } = await supabase
-        .from('orders')
-        .update({ workshop_order_number: guide, updated_by: profile.id })
-        .eq('id', orderId)
+    const { error: orderGuideError } = await supabase
+      .from('orders')
+      .update({ workshop_order_number: guide, updated_by: profile.id })
+      .eq('id', orderId)
 
-      if (orderGuideError) {
-        warning = ` La venta y sus citas se crearon, pero no se pudo guardar la guía en la ficha de venta: ${orderGuideError.message}`
-      } else if (scheduleTrial1 && trial1Type) {
-        const { error: appointmentGuideError } = await supabase
-          .from('appointments')
-          .update({ sales_guide_number: guide, updated_by: profile.id })
-          .eq('order_id', orderId)
-          .eq('appointment_type_id', trial1Type.id)
-        if (appointmentGuideError) {
-          warning = ` La venta y sus citas se crearon, pero la guía no pudo copiarse a Prueba 1: ${appointmentGuideError.message}`
-        }
+    if (orderGuideError) {
+      warning = ' La venta y sus citas se crearon, pero no se pudo guardar la guía en la ficha de venta: ' + orderGuideError.message
+    } else {
+      const { error: appointmentGuideError } = await supabase
+        .from('appointments')
+        .update({ sales_guide_number: guide, updated_by: profile.id })
+        .eq('order_id', orderId)
+        .eq('appointment_type_id', trial1Type.id)
+      if (appointmentGuideError) {
+        warning = ' La venta y sus citas se crearon, pero la guía no pudo copiarse a Prueba 1: ' + appointmentGuideError.message
       }
     }
 
     setSaving(false)
-    const createdLabels = [
-      scheduleTrial1 ? 'Prueba 1' : null,
-      scheduleTrial2 ? 'Prueba 2' : null,
-      scheduleDelivery ? 'Entrega' : null,
-    ].filter(Boolean).join(', ')
-
-    onCreated(
-      orderId,
-      createdLabels
-        ? `Venta registrada. ${createdLabels} quedaron agendadas en el mismo formulario.${warning}`
-        : `Venta registrada sin citas posteriores.${warning}`,
-    )
+    onCreated(orderId, 'Venta confirmada. Prueba 1, Prueba 2 y Entrega quedaron agendadas.' + warning)
   }
 
   return (
     <section className="panel order-wizard">
       <header className="detail-heading">
         <div>
-          <h2>Registrar venta y agenda posterior</h2>
-          <p>Registra la venta y deja programadas Prueba 1, Prueba 2 y Entrega en una sola pantalla.</p>
+          <h2>Confirmar venta y agendar</h2>
+          <p>Producto, valor y las tres citas en una sola pantalla.</p>
         </div>
-        <button className="icon-button" type="button" onClick={onCancel} aria-label="Cerrar registro de venta">×</button>
+        <button className="icon-button" type="button" onClick={onCancel} aria-label="Cerrar confirmación de venta">×</button>
       </header>
 
       <form className="form-stack" onSubmit={save}>
-        <div className="form-grid three-columns">
-          <label>
-            Cita de venta aceptada
-            <select value={sourceAppointmentId} onChange={(event) => chooseSource(event.target.value)}>
-              <option value="">Venta sin cita de origen</option>
-              {saleAppointments.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {formatDate(item.appointment_date)} · {item.client?.first_name} {item.client?.last_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Cliente
-            <select value={clientId} onChange={(event) => setClientId(event.target.value)} required disabled={Boolean(sourceAppointmentId)}>
-              <option value="">Seleccionar…</option>
-              {clients.map((client) => <option key={client.id} value={client.id}>{client.first_name} {client.last_name}</option>)}
-            </select>
-          </label>
-          <label>
-            Vendedora
-            <select value={sellerId} onChange={(event) => setSellerId(event.target.value)} required>
-              <option value="">Seleccionar…</option>
-              {sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.full_name}</option>)}
-            </select>
-          </label>
-          <label>
-            Tipo de producto
-            <select value={productTypeId} onChange={(event) => setProductTypeId(event.target.value)} required>
-              {productTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
-            </select>
-          </label>
-          <label>
-            Producto / modelo
-            <input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ej.: Vestido modelo Aurora" required />
-          </label>
-          <label>
-            Tipo de elaboración
-            <select value={productionRoute} onChange={(event) => setProductionRoute(event.target.value as ProductionRoute)}>
-              {Object.entries(productionRouteLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label>
-            Fecha de aceptación
-            <input type="date" value={saleDate} onChange={(event) => setSaleDate(event.target.value)} required />
-          </label>
-          <label>
-            Fecha del evento (opcional)
-            <input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} />
-          </label>
-          <label>
-            Valor final de la venta
-            <input type="number" min="1" step="1" value={grossAmount} onChange={(event) => setGrossAmount(event.target.value)} required />
-          </label>
-        </div>
+        {linkedSaleFlow && sourceAppointment && (
+          <div className="alert alert-success">
+            <strong>{sourceAppointment.client?.first_name} {sourceAppointment.client?.last_name}</strong>
+            {' · '}Venta aceptada el {formatDate(saleDate)}.
+          </div>
+        )}
+
+        {!linkedSaleFlow && (
+          <div className="form-grid three-columns">
+            <label>
+              Venta aceptada
+              <select value={sourceAppointmentId} onChange={(event) => chooseSource(event.target.value)}>
+                <option value="">Venta sin cita de origen</option>
+                {saleAppointments.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {formatDate(item.appointment_date)} · {item.client?.first_name} {item.client?.last_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Cliente
+              <select value={clientId} onChange={(event) => setClientId(event.target.value)} required>
+                <option value="">Seleccionar…</option>
+                {clients.map((client) => <option key={client.id} value={client.id}>{client.first_name} {client.last_name}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
 
         <fieldset className="form-section">
-          <legend>Agenda posterior a la venta</legend>
-          <p className="form-help">Puedes dejar las tres citas creadas de una vez. El sistema seguirá validando horarios, capacidad diaria y sobrecupos.</p>
-
+          <legend>Venta</legend>
           <div className="form-grid three-columns">
-            <label className="checkbox-label">
-              <input type="checkbox" checked={scheduleTrial1} onChange={(event) => {
-                setScheduleTrial1(event.target.checked)
-                if (!event.target.checked) {
-                  setTrial1Date('')
-                  setTrial1Time('')
-                  setWorkshopGuide('')
-                }
-              }} />
-              Agendar Prueba 1
+            <label>
+              Producto vendido
+              <input value={productName} onChange={(event) => setProductName(event.target.value)} placeholder="Ej.: Vestido Aurora" required />
             </label>
-            {scheduleTrial1 ? (
-              <>
-                <label>Fecha Prueba 1<input type="date" value={trial1Date} onChange={(event) => setTrial1Date(event.target.value)} required /></label>
-                <label>Hora Prueba 1<input type="time" step="900" value={trial1Time} onChange={(event) => setTrial1Time(event.target.value)} required /></label>
-                <label className="span-two">
-                  Guía de trabajo / taller
-                  <input value={workshopGuide} onChange={(event) => setWorkshopGuide(event.target.value)} placeholder="Ingresa la guía al programar Prueba 1" required />
-                  <small>La guía ya no se solicita al agendar la Venta. Se registra cuando la venta se concreta y se programa Prueba 1.</small>
-                </label>
-              </>
-            ) : <div className="span-two form-help">Prueba 1 no se creará en este paso.</div>}
-
-            <label className="checkbox-label">
-              <input type="checkbox" checked={scheduleTrial2} onChange={(event) => {
-                setScheduleTrial2(event.target.checked)
-                if (!event.target.checked) {
-                  setTrial2Date('')
-                  setTrial2Time('')
-                }
-              }} />
-              Agendar Prueba 2
+            <label>
+              Stock / elaboración
+              <select value={productionRoute} onChange={(event) => setProductionRoute(event.target.value as ProductionRoute)}>
+                <option value="stock_adjustments">Está en stock / ajustes</option>
+                <option value="existing_design">A pedido · diseño existente</option>
+                <option value="new_design">A pedido · diseño nuevo</option>
+              </select>
             </label>
-            {scheduleTrial2 ? (
-              <>
-                <label>Fecha Prueba 2<input type="date" value={trial2Date} onChange={(event) => setTrial2Date(event.target.value)} required /></label>
-                <label>Hora Prueba 2<input type="time" step="900" value={trial2Time} onChange={(event) => setTrial2Time(event.target.value)} required /></label>
-              </>
-            ) : <div className="span-two form-help">Prueba 2 no se creará en este paso.</div>}
-
-            <label className="checkbox-label">
-              <input type="checkbox" checked={scheduleDelivery} onChange={(event) => {
-                setScheduleDelivery(event.target.checked)
-                if (!event.target.checked) {
-                  setDeliveryAppointmentDate('')
-                  setDeliveryTime('')
-                  setDeliveryDate('')
-                }
-              }} />
-              Agendar Entrega
+            <label>
+              Valor final
+              <input type="number" min="1" step="1" value={grossAmount} onChange={(event) => setGrossAmount(event.target.value)} required />
             </label>
-            {scheduleDelivery ? (
-              <>
-                <label>Fecha Entrega<input type="date" value={deliveryAppointmentDate} onChange={(event) => {
-                  setDeliveryAppointmentDate(event.target.value)
-                  setDeliveryDate(event.target.value)
-                }} required /></label>
-                <label>Hora Entrega<input type="time" step="900" value={deliveryTime} onChange={(event) => setDeliveryTime(event.target.value)} required /></label>
-              </>
-            ) : <div className="span-two form-help">Entrega no se creará en este paso.</div>}
           </div>
         </fieldset>
 
-        <label>
-          Descripción o ajustes (opcional)
-          <textarea rows={2} value={designDescription} onChange={(event) => setDesignDescription(event.target.value)} />
-        </label>
-        <label>
-          Observaciones internas (opcional)
-          <textarea rows={2} value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} />
-        </label>
+        <fieldset className="form-section">
+          <legend>Citas</legend>
+          <p className="form-help">Las tres citas se crean juntas al confirmar.</p>
+          <div className="form-grid three-columns">
+            <label>
+              Prueba 1 · fecha
+              <input type="date" value={trial1Date} onChange={(event) => setTrial1Date(event.target.value)} required />
+            </label>
+            <label>
+              Prueba 1 · hora
+              <input type="time" step="900" value={trial1Time} onChange={(event) => setTrial1Time(event.target.value)} required />
+            </label>
+            <label>
+              Guía de trabajo
+              <input value={workshopGuide} onChange={(event) => setWorkshopGuide(event.target.value)} placeholder="N° de guía" required />
+            </label>
 
-        {sourceAppointment && (
-          <div className="alert alert-info">
-            {decisionTiming(sourceAppointment)}. La fecha de aceptación se traspasó automáticamente a la venta.
+            <label>
+              Prueba 2 · fecha
+              <input type="date" value={trial2Date} onChange={(event) => setTrial2Date(event.target.value)} required />
+            </label>
+            <label>
+              Prueba 2 · hora
+              <input type="time" step="900" value={trial2Time} onChange={(event) => setTrial2Time(event.target.value)} required />
+            </label>
+            <span />
+
+            <label>
+              Entrega · fecha
+              <input type="date" value={deliveryAppointmentDate} onChange={(event) => {
+                setDeliveryAppointmentDate(event.target.value)
+                setDeliveryDate(event.target.value)
+              }} required />
+            </label>
+            <label>
+              Entrega · hora
+              <input type="time" step="900" value={deliveryTime} onChange={(event) => setDeliveryTime(event.target.value)} required />
+            </label>
           </div>
-        )}
+        </fieldset>
+
+        <details>
+          <summary>Más datos de la venta (opcional)</summary>
+          <div className="form-grid three-columns">
+            <label>
+              Tipo de producto
+              <select value={productTypeId} onChange={(event) => setProductTypeId(event.target.value)} required>
+                {productTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Vendedora
+              <select value={sellerId} onChange={(event) => setSellerId(event.target.value)} required>
+                <option value="">Seleccionar…</option>
+                {sellers.map((seller) => <option key={seller.id} value={seller.id}>{seller.full_name}</option>)}
+              </select>
+            </label>
+            <label>
+              Fecha de aceptación
+              <input type="date" value={saleDate} onChange={(event) => setSaleDate(event.target.value)} required />
+            </label>
+            <label>
+              Fecha del evento
+              <input type="date" value={eventDate} onChange={(event) => setEventDate(event.target.value)} />
+            </label>
+          </div>
+          <label>
+            Descripción o ajustes
+            <textarea rows={2} value={designDescription} onChange={(event) => setDesignDescription(event.target.value)} />
+          </label>
+          <label>
+            Observaciones internas
+            <textarea rows={2} value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} />
+          </label>
+        </details>
+
         <div className="alert alert-info">
-          Cliente: <strong>{selectedClient ? `${selectedClient.first_name} ${selectedClient.last_name}` : 'por seleccionar'}</strong> ·
-          Valor: <strong>{formatClp(Number(grossAmount || 0))}</strong>. Las tasas históricas se conservarán automáticamente.
+          <strong>{selectedClient ? selectedClient.first_name + ' ' + selectedClient.last_name : 'Cliente por seleccionar'}</strong>
+          {' · '}Total {formatClp(Number(grossAmount || 0))}. Se crearán Prueba 1, Prueba 2 y Entrega.
         </div>
 
         <footer className="wizard-actions">
           <button className="btn btn-secondary" type="button" disabled={saving} onClick={onCancel}>Cancelar</button>
-          <button className="btn btn-primary" disabled={saving} type="submit">{saving ? 'Registrando…' : 'Registrar venta y citas'}</button>
+          <button className="btn btn-primary" disabled={saving} type="submit">{saving ? 'Confirmando…' : 'Confirmar venta y agendar'}</button>
         </footer>
       </form>
     </section>
   )
-}
-
-function decisionTiming(appointment: Appointment) {
-  const acceptedDate = appointment.commercial_outcome_at
-    ? chileIsoDate(appointment.commercial_outcome_at)
-    : appointment.appointment_date
-  return acceptedDecisionSummary(acceptedDate, appointment.appointment_date)
 }

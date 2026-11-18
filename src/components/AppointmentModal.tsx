@@ -1033,7 +1033,7 @@ export function AppointmentModal({ open, profile, appointment, initialDate, onCl
               {appointment.commercial_outcome === 'completed_sale' && (
                 <div className="alert alert-success order-cta">
                   <span>{appointment.order_id ? 'Esta venta ya está registrada.' : 'Venta aceptada lista para registrar.'}</span>
-                  <button type="button" className="btn btn-primary" onClick={() => onCreateOrder(appointment)}>{appointment.order_id ? 'Ver venta' : 'Registrar venta'}</button>
+                  <button type="button" className="btn btn-primary" onClick={() => onCreateOrder(appointment)}>{appointment.order_id ? 'Ver venta' : 'Confirmar venta y agendar'}</button>
                 </div>
               )}
             </fieldset>

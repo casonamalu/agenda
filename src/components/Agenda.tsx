@@ -28,7 +28,7 @@ function appointmentClass(appointment: Appointment) {
   return `appointment-card status-${appointment.status}${appointment.is_overbook ? ' overbook' : ''}`
 }
 
-interface SalesGuideSource {
+interface GuideSource {
   client_id: string
   appointment_date: string
   start_time: string
@@ -39,10 +39,10 @@ function appointmentMoment(appointment: { appointment_date: string; start_time: 
   return `${appointment.appointment_date}T${appointment.start_time.slice(0, 5)}`
 }
 
-async function includePreviousSaleGuides(appointments: Appointment[]) {
+async function includePreviousGuides(appointments: Appointment[]) {
   const clientIds = [...new Set(appointments.map((appointment) => appointment.client_id))]
   if (!clientIds.length) return { appointments, error: null as string | null }
-  const sales: SalesGuideSource[] = []
+  const guides: GuideSource[] = []
   const chunkSize = 100
   const pageSize = 1000
 
@@ -52,31 +52,31 @@ async function includePreviousSaleGuides(appointments: Appointment[]) {
     while (true) {
       const { data, error } = await supabase
         .from('appointments')
-        .select('client_id,appointment_date,start_time,sales_guide_number,appointment_type:appointment_types!inner(category)')
+        .select('client_id,appointment_date,start_time,sales_guide_number')
         .in('client_id', clientChunk)
-        .eq('appointment_type.category', 'sale')
+        .not('sales_guide_number', 'is', null)
         .order('appointment_date', { ascending: false })
         .order('start_time', { ascending: false })
         .range(page * pageSize, page * pageSize + pageSize - 1)
       if (error) return { appointments, error: error.message }
-      sales.push(...((data ?? []) as unknown as SalesGuideSource[]))
+      guides.push(...((data ?? []) as GuideSource[]))
       if ((data?.length ?? 0) < pageSize) break
       page += 1
     }
   }
 
-  const salesByClient = new Map<string, SalesGuideSource[]>()
-  for (const sale of sales) {
-    const clientSales = salesByClient.get(sale.client_id) ?? []
-    clientSales.push(sale)
-    salesByClient.set(sale.client_id, clientSales)
+  const guidesByClient = new Map<string, GuideSource[]>()
+  for (const guide of guides) {
+    const clientGuides = guidesByClient.get(guide.client_id) ?? []
+    clientGuides.push(guide)
+    guidesByClient.set(guide.client_id, clientGuides)
   }
   const enrichedAppointments = appointments.map((appointment) => {
-    if (appointment.appointment_type?.category === 'sale') return appointment
+    if (appointment.sales_guide_number) return appointment
     const targetMoment = appointmentMoment(appointment)
-    const previousSale = (salesByClient.get(appointment.client_id) ?? [])
-      .find((sale) => appointmentMoment(sale) <= targetMoment)
-    return { ...appointment, sales_guide_number: previousSale?.sales_guide_number ?? null }
+    const previousGuide = (guidesByClient.get(appointment.client_id) ?? [])
+      .find((guide) => appointmentMoment(guide) <= targetMoment)
+    return { ...appointment, sales_guide_number: previousGuide?.sales_guide_number ?? null }
   })
   return { appointments: enrichedAppointments, error: null as string | null }
 }
@@ -144,7 +144,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
     ])
     if (appointmentsResult.error) setError(appointmentsResult.error.message)
     const rows = (appointmentsResult.data ?? []) as Appointment[]
-    const guideResolution = await includePreviousSaleGuides(rows)
+    const guideResolution = await includePreviousGuides(rows)
     if (guideResolution.error) setError(guideResolution.error)
     setAppointments(guideResolution.appointments)
     setTypes((typesResult.data ?? []) as AppointmentType[])
@@ -177,7 +177,7 @@ export function Agenda({ refreshToken, onOpenAppointment, onDateForNewAppointmen
       setError(searchError.message)
       setGlobalResults([])
     } else {
-      const guideResolution = await includePreviousSaleGuides(allAppointments)
+      const guideResolution = await includePreviousGuides(allAppointments)
       if (guideResolution.error) setError(guideResolution.error)
       const compactDate = query.trim().replace(/\//g, '-')
       setGlobalResults(guideResolution.appointments.filter((appointment) => {

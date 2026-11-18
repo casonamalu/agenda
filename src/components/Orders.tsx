@@ -345,7 +345,7 @@ export function Orders({ profile, refreshToken, initialAppointmentId, onLaunchHa
 
               <div className="panel form-stack">
                 <div className="detail-heading">
-                  <div><h3>Agenda posterior a la venta</h3><p>Crea Prueba 1, Prueba 2 o Entrega desde Agenda y luego vincúlala aquí.</p></div>
+                  <div><h3>Agenda posterior a la venta</h3><p>Las citas creadas al registrar la venta aparecen aquí. Usa “+ Crear cita” solo para agregar o corregir una cita excepcional.</p></div>
                   <button className="btn btn-primary btn-sm" type="button" onClick={onNewAppointment}>+ Crear cita</button>
                 </div>
                 {linkableAppointments.length > 0 && <label>Vincular cita existente<select defaultValue="" onChange={(event) => { void linkAppointment(event.target.value); event.target.value = '' }}><option value="">Seleccionar…</option>{linkableAppointments.map((item) => <option key={item.id} value={item.id}>{formatDate(item.appointment_date)} · {item.appointment_type?.name}</option>)}</select></label>}

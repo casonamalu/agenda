@@ -11,13 +11,13 @@ test('la guía se solicita en Prueba 1 y no en Venta', async () => {
   assert.doesNotMatch(modal, /selectedType\?\.category === 'sale' && \(\s*<div className="span-two workshop-guide-editor"/)
 })
 
-test('registrar venta permite crear Prueba 1, Prueba 2 y Entrega en un solo formulario', async () => {
+test('confirmar venta permite crear Prueba 1, Prueba 2 y Entrega en un solo formulario', async () => {
   const wizard = await readFile(new URL('src/components/OrderWizard.tsx', root), 'utf8')
   assert.match(wizard, /p_scheduled_appointments: scheduledAppointments/)
-  assert.match(wizard, /Agendar Prueba 1/)
-  assert.match(wizard, /Agendar Prueba 2/)
-  assert.match(wizard, /Agendar Entrega/)
-  assert.match(wizard, /Registrar venta y citas/)
+  assert.match(wizard, /Prueba 1 · fecha/)
+  assert.match(wizard, /Prueba 2 · fecha/)
+  assert.match(wizard, /Entrega · fecha/)
+  assert.match(wizard, /Confirmar venta y agendar/)
 })
 
 test('la agenda hereda guías históricas o creadas desde Prueba 1', async () => {

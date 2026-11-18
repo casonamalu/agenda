@@ -155,12 +155,12 @@ export function OrderWizard({
     const guide = workshopGuide.trim()
     let guideQuery = supabase.from('appointments').select('id').eq('sales_guide_number', guide)
     if (sourceAppointmentId) guideQuery = guideQuery.neq('id', sourceAppointmentId)
-    const [{ data: appointmentGuide, error: appointmentGuideError }, { data: orderGuide, error: orderGuideError }] = await Promise.all([
+    const [{ data: appointmentGuide, error: existingAppointmentGuideError }, { data: orderGuide, error: existingOrderGuideError }] = await Promise.all([
       guideQuery.limit(1).maybeSingle(),
       supabase.from('orders').select('id').eq('workshop_order_number', guide).limit(1).maybeSingle(),
     ])
-    if (appointmentGuideError || orderGuideError) {
-      onError(appointmentGuideError?.message ?? orderGuideError?.message ?? 'No fue posible validar la guía.')
+    if (existingAppointmentGuideError || existingOrderGuideError) {
+      onError(existingAppointmentGuideError?.message ?? existingOrderGuideError?.message ?? 'No fue posible validar la guía.')
       return
     }
     if (appointmentGuide || orderGuide) {
